@@ -41,6 +41,29 @@ def _copy_built_function(user, func):
     src_file = join(FUNC_BUILD_DIR, user, ".".join([func, "wasm"]))
     wasm_copy_upload(user, func, src_file)
 
+def _join_and_instrument_rpc(user, func):
+    src_file = join(FUNC_BUILD_DIR, user, ".".join([func, "wasm"]))
+    if user != "rpc":
+        return src_file
+
+    print(f"[Asyncify] {user}/{func}")
+
+    out_file = join(FUNC_BUILD_DIR, user, f"{func}.asyncify.wasm")
+
+    run(
+        [
+            "wasm-opt",
+            src_file,
+            "--asyncify",
+            "--pass-arg=asyncify-imports@env.Rpc_UnaryCall",
+            "--disable-bulk-memory",
+            "-o",
+            out_file,
+        ],
+        check=True,
+    )
+
+    return out_file
 
 @task(default=True, name="compile")
 def compile(ctx, user, func, clean=False, debug=False, native=False):
@@ -187,6 +210,7 @@ def local(ctx, clean=False, debug=False):
     user(ctx, "demo", clean, debug)
     user(ctx, "errors", clean, debug)
     user(ctx, "mpi", clean, debug)
+    user(ctx, "rpc", clean, debug)
     user(ctx, "s3", clean, debug)
 
     # Threaded users

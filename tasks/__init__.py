@@ -10,6 +10,7 @@ from . import libemscripten
 from . import libfaasm
 from . import libfaasmp
 from . import libfaasmpi
+from . import libfaasrpc
 from . import libfake
 from . import libffi
 from . import llvm
@@ -26,6 +27,7 @@ ns = Collection(
     libfaasm,
     libfaasmp,
     libfaasmpi,
+    libfaasrpc,
     libfake,
     libffi,
     llvm,
