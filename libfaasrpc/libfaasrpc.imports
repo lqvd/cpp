@@ -2,4 +2,7 @@
 
 Rpc_ChannelCreate
 Rpc_ChannelClose
-Rpc_UnaryCall
+__faasm_rpc_unary_start
+__faasm_rpc_test_response
+__faasm_rpc_wait_migratable
+__faasm_rpc_get_response
