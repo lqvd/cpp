@@ -13,13 +13,24 @@
 
 namespace faabric::coro {
 
-// The coroutine Awaiter type.
-
+// `RpcCall` is a domain-specific `Awaitable` which encapsulates Faasm's RPC and
+// migration semantics. `RpcCall` implements the coroutine await interface,
+// integrating directly with the coroutine model, providing natural suspension
+// points that are aware of Faasm's runtime behaviour.
+//
+// `RpcCall` coordinates waiting for RPC completion with migration, allowing
+// suspended coroutines to be safely snapshotted and restored on another host
+// without exposing these runtime details to the user.
+//
+// Use the unary `co_await` on `RpcCall<T>` objects.
+// RpcCalls are single-use.
 template <typename T>
 class RpcCall {
   public:
     explicit RpcCall(int32_t requestId)
-      : requestId(requestId) {}
+      : requestId(requestId)
+      , consumed(false)
+    {}
 
     // Not copyable — owns the requestId
     RpcCall(const RpcCall&) = delete;
@@ -27,16 +38,20 @@ class RpcCall {
     RpcCall(RpcCall&&) = default;
     RpcCall& operator=(RpcCall&&) = default;
 
-    bool await_ready() const noexcept
+    bool await_ready() const
     {
+        if (consumed) {
+            throw std::runtime_error("RpcCall awaited more than once");
+        }
+
         return __faasm_rpc_test_response(requestId) != 0;
     }
 
-    void await_suspend(std::coroutine_handle<> h) noexcept
+    bool await_suspend(std::coroutine_handle<> h) noexcept
     {
         // If migration happens inside wait_migratable, the frame at this
         // offset is snapshotted and resumed on the new host. The new host
-        // reconstructs the handle from (memBase + storedOffset) and calls
+        // reconstructs the handle and calls
         // resume(), continuing from await_resume() below.
         int32_t frameOffset = static_cast<int32_t>(
             reinterpret_cast<uintptr_t>(h.address()));
@@ -46,8 +61,8 @@ class RpcCall {
             faabric::coro::coro_trampoline_index(),
             frameOffset);
 
-        // If we reach here, no migration happened — response is ready.
-        return;
+        // Resume and continue execution by returning false.
+        return false;
     }
 
     T await_resume()
@@ -73,6 +88,7 @@ class RpcCall {
 
   private:
     int32_t requestId;
+    bool consumed;
 };
 
 }   // namespace faabric::coro
