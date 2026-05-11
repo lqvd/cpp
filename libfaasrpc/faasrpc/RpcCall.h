@@ -4,11 +4,10 @@
 #include <faasrpc/coro_trampoline.h>
 
 #include <coroutine>
+#include <cstdio>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include <thread>
-#include <chrono>
 
 
 namespace faabric::coro {
@@ -29,7 +28,6 @@ class RpcCall {
   public:
     explicit RpcCall(int32_t requestId)
       : requestId(requestId)
-      , consumed(false)
     {}
 
     // Not copyable — owns the requestId
@@ -38,13 +36,9 @@ class RpcCall {
     RpcCall(RpcCall&&) = default;
     RpcCall& operator=(RpcCall&&) = default;
 
-    bool await_ready() const
+    bool await_ready() const noexcept
     {
-        if (consumed) {
-            throw std::runtime_error("RpcCall awaited more than once");
-        }
-
-        return __faasm_rpc_test_response(requestId) != 0;
+        return __faasm_rpc_test_response(requestId) >= 0;
     }
 
     bool await_suspend(std::coroutine_handle<> h) noexcept
@@ -65,30 +59,32 @@ class RpcCall {
         return false;
     }
 
-    T await_resume()
+    T await_resume() noexcept
     {
+        printf("[RpcCall] resuming %d", requestId);
+        while (__faasm_rpc_test_response(requestId) == 0) {}
+
         int32_t respOffset = 0;
         int32_t respLen = 0;
+
+        // get_response also handles double consumption, and will handle via
+        // return code
+        printf("[RpcCall] consuming %d", requestId);
         int32_t status =
             __faasm_rpc_get_response(requestId, &respOffset, &respLen);
 
-        if (status != 0) {
-            throw std::runtime_error(
-                "RpcCall: get_response failed with status "
-                + std::to_string(status));
-        }
-
         T resp;
-        if (!resp.ParseFromArray(
-                reinterpret_cast<const void*>(respOffset), respLen)) {
-            throw std::runtime_error("RpcCall: failed to parse response");
+        if (status == 0) {
+            resp.ParseFromArray(
+                reinterpret_cast<const void*>(respOffset), respLen);
+        } else {
+            printf("[RpcCall] get_response failed status=%d\n", status);
         }
         return resp;
     }
 
   private:
     int32_t requestId;
-    bool consumed;
 };
 
 }   // namespace faabric::coro
