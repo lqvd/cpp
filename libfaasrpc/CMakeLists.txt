@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PUBLIC_HEADERS
     faasrpc/faasrpc.h
+    faasrpc/coro_trampoline.h
     faasrpc/RpcCall.h
     faasrpc/Task.h
 )
@@ -52,7 +53,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
 
     install(CODE
         "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
-            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/faasrpc/rpc.h \
+            $ENV{FAASM_WASM_LIB_INSTALL_DIR}/include/faabric/rpc/rpc.h \
             $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h)"
     )
 
@@ -73,6 +74,17 @@ else()
         LIBRARY DESTINATION lib
         PUBLIC_HEADER DESTINATION include/faasrpc
     )
+
+    # Symlink rpc.h
+    install(
+        CODE "execute_process( \
+        COMMAND ${CMAKE_COMMAND} -E create_symlink \
+            ${CMAKE_INSTALL_PREFIX}/include/faabric/rpc/rpc.h \
+            ${CMAKE_INSTALL_PREFIX}/include/rpc.h   \
+        )"
+    )
 endif()
 
 target_include_directories(faasrpc PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+
+target_compile_features(faasrpc PUBLIC cxx_std_20)
