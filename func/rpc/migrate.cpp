@@ -1,111 +1,86 @@
+#include <faasrpc/Task.h>
+#include <faasrpc/RpcCall.h>
+#include <faasrpc/coro_trampoline.h>
 #include <rpc.h>
 
-#include <faasm/migrate.h>
-#include <faasm/time.h>
+#include "Ping.h"
 
+#include <coroutine>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-int checkEvery = 1;
-int numLoops = 0;
+// Coroutine entry point
 
-// Outer wrapper and re-entry point after migration
-void doBenchmark(int nLoops)
+// If migration happens at co_await ping_a:
+//   - Frame is snapshotted (contains channelId, ping_b RpcCall etc.)
+//   - __faasm_rpc_coro_trampoline is registered as the re-entry point
+//   - Host B restores linear memory, calls trampoline(frameOffset)
+//   - Coroutine resumes from after co_await ping_a
+//   - Response for ping_a is proxied from host A via forwarding table
+//   - ping_b is dispatched on host B
+// Returns Task<void> — the executor calls task.resume() once to start it.
+
+faabric::rpc::Task<void> runMigrationBenchmark(int32_t channelId)
 {
-    bool mustCheck = (nLoops == numLoops);
+    PingSvcStub stub(channelId);
 
-    Rpc_ChannelId channelId = 0;
-    int createStatus =
-      Rpc_ChannelCreate("faabric://127.0.0.1", &channelId);
+    printf("[WASM] --- Dispatching RPC A ---\n");
 
-    if (createStatus != Rpc_StatusCode::OK) {
-        printf("Rpc_ChannelCreate failed with status %d\n", createStatus);
-        return;
-    }
+    auto ping_a = stub.Ping("Hello from host A");
 
-    double timeStartSec = 0.0;
-    double timeEndSec = 0.0;
+    printf("[WASM] Waiting for RPC A (migration point 1)...\n");
+    PingResponse resp_a = co_await ping_a;
 
-    printf("time now: %f\n", faasm::getSecondsSinceEpoch());
-    printf("%i loops to go\n", nLoops);
+    printf("[WASM] RPC A complete. Response: '%s'\n", resp_a.message);
 
-    // Tiny request payload for unary call
-    const char* payload = "hello";
-    const uint8_t* reqBuf = reinterpret_cast<const uint8_t*>(payload);
-    int32_t reqLen = static_cast<int32_t>(strlen(payload));
+    printf("[WASM] --- Dispatching RPC B ---\n");
+    auto ping_b = stub.Ping("Hello from wherever we are now");
 
-    for (int i = 0; i < nLoops; i++) {
-        if (i % (nLoops / 10 == 0 ? 1 : nLoops / 10) == 0) {
-            printf("Starting iteration %i/%i\n", i, nLoops);
-        }
+    printf("[WASM] Waiting for RPC B (migration point 2)...\n");
+    PingResponse resp_b = co_await ping_b;
 
-        // Unary RPC call (the method string must exist in your RPC service)
-        uint8_t* respBuf = nullptr;
-        int32_t respLen = 0;
-        int callStatus = Rpc_UnaryCall(
-          channelId,
-          "ping", // Replace with your real method name
-          reqBuf,
-          reqLen,
-          &respBuf,
-          &respLen);
+    printf("[WASM] RPC B complete. Response: '%s'\n", resp_b.message);
 
-        if (callStatus != Rpc_StatusCode::OK) {
-            printf("Rpc_UnaryCall failed with status %d\n", callStatus);
-        } else {
-            printf("Rpc_UnaryCall ok, response length=%d\n", respLen);
-        }
+    printf("[WASM] --- Fan-out: dispatching C and D simultaneously ---\n");
+    auto ping_c = stub.Ping("Fan-out C");
+    auto ping_d = stub.Ping("Fan-out D");
 
-        // Runtime allocates response memory for guest; free after use
-        if (respBuf != nullptr) {
-            free(respBuf);
-            respBuf = nullptr;
-        }
+    printf("[WASM] Awaiting C (both C and D are in flight)...\n");
+    PingResponse resp_c = co_await ping_c;
 
-        if (!mustCheck && i % checkEvery == 1 && i / checkEvery > 0) {
-            timeEndSec = faasm::getSecondsSinceEpoch();
-            printf("Spent %f sec migrating\n", timeEndSec - timeStartSec);
-        }
+    printf("[WASM] Awaiting D...\n");
+    PingResponse resp_d = co_await ping_d;
 
-        if (mustCheck && i % checkEvery == 0 && i / checkEvery > 0) {
-            mustCheck = false;
-            printf("Checking for migration at iteration %i/%i\n", i, nLoops);
+    printf("[WASM] Fan-out complete. C='%s' D='%s'\n",
+           resp_c.message, resp_d.message);
 
-            timeStartSec = faasm::getSecondsSinceEpoch();
-            printf("Migration start time: %f\n", timeStartSec);
-            printf("Remaining loops arg: %i\n", nLoops - i - 1);
-
-            __faasm_migrate_point(&doBenchmark, (nLoops - i - 1));
-        }
-    }
-
-    int closeStatus = Rpc_ChannelClose(channelId);
-    if (closeStatus != Rpc_StatusCode::OK) {
-        printf("Rpc_ChannelClose failed with status %d\n", closeStatus);
-    }
+    printf("[WASM] All RPC calls complete.\n");
+    co_return;
 }
 
 int main(int argc, char* argv[])
 {
-    if (argc != 3) {
-        printf("Must provide two input arguments: <check_period> <num_loops>\n");
+    printf("Starting coroutine RPC migration benchmark\n");
+
+    // Create channel
+    int32_t channelId = 0;
+    int32_t createStatus =
+        Rpc_ChannelCreate("faabric://127.0.0.1", &channelId);
+
+    if (createStatus != Rpc_StatusCode::OK) {
+        printf("[WASM] Rpc_ChannelCreate failed: %d\n", createStatus);
         return 1;
     }
 
-    int checkEveryIn = atoi(argv[1]);
-    int numLoopsIn = atoi(argv[2]);
+    printf("[WASM] Channel created: %d\n", channelId);
 
-    numLoops = numLoopsIn;
-    checkEvery = (int)(numLoops * ((float)checkEveryIn / 10.0f));
-    if (checkEvery <= 0) {
-        checkEvery = 1;
-    }
+    auto* task = new faabric::rpc::Task<void>(runMigrationBenchmark(channelId));
+    task->resume();
 
-    printf("Starting RPC migration checking at iter %i/%i\n", checkEvery, numLoops);
+    Rpc_ChannelClose(channelId);
+    task->destroy();
 
-    doBenchmark(numLoops);
-
-    printf("RPC migration benchmark finished successfully\n");
+    printf("Benchmark finished successfully\n");
     return 0;
 }
