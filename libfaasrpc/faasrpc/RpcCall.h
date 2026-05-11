@@ -47,7 +47,7 @@ class RpcCall {
         // offset is snapshotted and resumed on the new host. The new host
         // reconstructs the handle and calls
         // resume(), continuing from await_resume() below.
-        printf("[RpcCall] suspended");
+        printf("[RpcCall] suspended %d\n", requestId);
         int32_t frameOffset = static_cast<int32_t>(
             reinterpret_cast<uintptr_t>(h.address()));
 
@@ -62,7 +62,7 @@ class RpcCall {
 
     T await_resume() noexcept
     {
-        printf("[RpcCall] resuming %d", requestId);
+        printf("[RpcCall] resuming %d\n", requestId);
         while (__faasm_rpc_test_response(requestId) == 0) {}
 
         int32_t respOffset = 0;
@@ -70,7 +70,7 @@ class RpcCall {
 
         // get_response also handles double consumption, and will handle via
         // return code
-        printf("[RpcCall] consuming %d", requestId);
+        printf("[RpcCall] consuming %d\n", requestId);
         int32_t status =
             __faasm_rpc_get_response(requestId, &respOffset, &respLen);
 

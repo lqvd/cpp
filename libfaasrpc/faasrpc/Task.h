@@ -115,10 +115,6 @@ class [[nodiscard]] Task {
         handle_type coroutine = nullptr;
     };
 
-    static Task* create(handle_type h) {
-        return new Task(h);
-    }
-
     Task(const Task&) = delete;
     Task& operator=(const Task&) = delete;
 
@@ -298,10 +294,6 @@ class [[nodiscard]] Task<void> {
 
         handle_type coroutine = nullptr;
     };
-
-    static Task* create(handle_type h) {
-        return new Task(h);
-    }
 
     Task(const Task&) = delete;
     Task& operator=(const Task&) = delete;
