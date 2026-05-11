@@ -38,7 +38,7 @@ class RpcCall {
 
     bool await_ready() const noexcept
     {
-        return __faasm_rpc_test_response(requestId) >= 0;
+        return __faasm_rpc_test_response(requestId) != 0;
     }
 
     bool await_suspend(std::coroutine_handle<> h) noexcept
@@ -47,6 +47,7 @@ class RpcCall {
         // offset is snapshotted and resumed on the new host. The new host
         // reconstructs the handle and calls
         // resume(), continuing from await_resume() below.
+        printf("[RpcCall] suspended");
         int32_t frameOffset = static_cast<int32_t>(
             reinterpret_cast<uintptr_t>(h.address()));
 
