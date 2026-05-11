@@ -115,33 +115,18 @@ class [[nodiscard]] Task {
         handle_type coroutine = nullptr;
     };
 
-    Task() noexcept = default;
-
-    explicit Task(handle_type h) noexcept
-      : handle(h)
-    {}
+    static Task* create(handle_type h) {
+        return new Task(h);
+    }
 
     Task(const Task&) = delete;
     Task& operator=(const Task&) = delete;
 
-    Task(Task&& other) noexcept
-      : handle(std::exchange(other.handle, nullptr))
-    {}
+    Task(Task&& other) = delete;
 
-    Task& operator=(Task&& other) noexcept
-    {
-        if (this != &other) {
-            destroy();
-            handle = std::exchange(other.handle, nullptr);
-        }
+    Task& operator=(Task&& other) = delete;
 
-        return *this;
-    }
-
-    ~Task()
-    {
-        destroy();
-    }
+    ~Task() = default;
 
     bool is_ready() const noexcept
     {
@@ -157,15 +142,14 @@ class [[nodiscard]] Task {
         return handle && !handle.done();
     }
 
-    bool destroy() noexcept
+    // Explicitly call destroy!
+    void destroy() noexcept
     {
         if (handle) {
             handle.destroy();
             handle = nullptr;
-            return true;
         }
-
-        return false;
+        delete this;
     }
 
     auto operator co_await() & noexcept
@@ -236,6 +220,10 @@ class [[nodiscard]] Task {
     }
 
   private:
+    explicit Task(handle_type h) noexcept
+        : handle(h)
+    {}
+
     handle_type handle = nullptr;
 };
 
@@ -311,29 +299,18 @@ class [[nodiscard]] Task<void> {
         handle_type coroutine = nullptr;
     };
 
-    Task() noexcept = default;
-
-    explicit Task(handle_type h) noexcept
-      : handle(h)
-    {}
+    static Task* create(handle_type h) {
+        return new Task(h);
+    }
 
     Task(const Task&) = delete;
     Task& operator=(const Task&) = delete;
 
-    Task(Task&& other) noexcept
-      : handle(std::exchange(other.handle, nullptr))
-    {}
+    Task(Task&& other) = delete;
 
-    Task& operator=(Task&& other) noexcept
-    {
-        if (this != &other) {
-            destroy();
-            handle = std::exchange(other.handle, nullptr);
-        }
-        return *this;
-    }
+    Task& operator=(Task&& other) = delete;
 
-    ~Task() { destroy(); }
+    ~Task() = default;
 
     bool is_ready() const noexcept
     {
@@ -348,14 +325,13 @@ class [[nodiscard]] Task<void> {
         return handle && !handle.done();
     }
 
-    bool destroy() noexcept
+    void destroy() noexcept
     {
         if (handle) {
             handle.destroy();
             handle = nullptr;
-            return true;
         }
-        return false;
+        delete this;
     }
 
     auto operator co_await() & noexcept
@@ -399,6 +375,10 @@ class [[nodiscard]] Task<void> {
     handle_type get_handle() const noexcept { return handle; }
 
   private:
+    explicit Task(handle_type h) noexcept
+        : handle(h)
+    {}
+
     handle_type handle = nullptr;
 };
 
