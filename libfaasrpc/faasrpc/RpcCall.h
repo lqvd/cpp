@@ -10,9 +10,9 @@
 #include <string>
 
 
-namespace faabric::coro {
+namespace faabric::rpc {
 
-// `RpcCall` is a domain-specific `Awaitable` which encapsulates Faasm's RPC and
+// `RpcCall` is a Faasm-specific `Awaitable` which encapsulates Faasm's RPC and
 // migration semantics. `RpcCall` implements the coroutine await interface,
 // integrating directly with the coroutine model, providing natural suspension
 // points that are aware of Faasm's runtime behaviour.
@@ -53,7 +53,7 @@ class RpcCall {
 
         __faasm_rpc_wait_migratable(
             requestId,
-            faabric::coro::coro_trampoline_index(),
+            faabric::rpc::coro_trampoline_index(),
             frameOffset);
 
         // Resume and continue execution by returning false.
@@ -88,4 +88,4 @@ class RpcCall {
     int32_t requestId;
 };
 
-}   // namespace faabric::coro
+}   // namespace faabric::rpc

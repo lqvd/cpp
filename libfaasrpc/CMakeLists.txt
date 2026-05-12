@@ -5,8 +5,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PUBLIC_HEADERS
-    faasrpc/faasrpc.h
     faasrpc/coro_trampoline.h
+    faasrpc/faasrpc.h
+    faasrpc/MigrationCheckpoint.h
     faasrpc/RpcCall.h
     faasrpc/Task.h
 )

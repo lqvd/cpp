@@ -15,7 +15,7 @@ bool PingResponse::ParseFromArray(const void* data, int len)
     return true;
 }
 
-faabric::coro::RpcCall<PingResponse> PingSvcStub::Ping(const char* payload)
+faabric::rpc::RpcCall<PingResponse> PingSvcStub::Ping(const char* payload)
 {
     int32_t requestId = 0;
     int32_t status = __faasm_rpc_unary_start(
@@ -33,10 +33,10 @@ faabric::coro::RpcCall<PingResponse> PingSvcStub::Ping(const char* payload)
     printf("[WASM] Dispatched ping request=%d payload='%s'\n",
             requestId, payload);
 
-    return faabric::coro::RpcCall<PingResponse>{ requestId };
+    return faabric::rpc::RpcCall<PingResponse>{ requestId };
 }
 
-faabric::coro::RpcCall<PingResponse> PingSvcStub::PingSlow(const char* payload)
+faabric::rpc::RpcCall<PingResponse> PingSvcStub::PingSlow(const char* payload)
 {
     int32_t requestId = 0;
     int32_t status = __faasm_rpc_unary_start(
@@ -51,5 +51,5 @@ faabric::coro::RpcCall<PingResponse> PingSvcStub::PingSlow(const char* payload)
         printf("[WASM] unary_start failed (ping_slow): %d\n", status);
     }
 
-    return faabric::coro::RpcCall<PingResponse>{ requestId };
+    return faabric::rpc::RpcCall<PingResponse>{ requestId };
 }

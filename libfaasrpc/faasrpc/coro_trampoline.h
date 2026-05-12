@@ -16,7 +16,7 @@ void __faasm_rpc_coro_trampoline(int32_t frameOffset);
 #endif
 
 
-namespace faabric::coro {
+namespace faabric::rpc {
 
 // A helper function in the guest context to enable passing in the trampoline
 // function as the entry point for Faasm migration.
@@ -26,4 +26,4 @@ inline int32_t coro_trampoline_index()
         reinterpret_cast<uintptr_t>(&__faasm_rpc_coro_trampoline));
 }
 
-} // namespace faabric::coro
+} // namespace faabric::rpc

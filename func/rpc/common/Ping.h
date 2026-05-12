@@ -18,9 +18,9 @@ class PingSvcStub {
     explicit PingSvcStub(int32_t channelId)
       : channelId(channelId) {}
 
-    faabric::coro::RpcCall<PingResponse> Ping(const char* payload);
+    faabric::rpc::RpcCall<PingResponse> Ping(const char* payload);
     
-    faabric::coro::RpcCall<PingResponse> PingSlow(const char* payload); 
+    faabric::rpc::RpcCall<PingResponse> PingSlow(const char* payload); 
 
   private:
     int32_t channelId;
