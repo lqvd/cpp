@@ -1,7 +1,7 @@
 #pragma once
 
-#include <faasm/host_interface.h>
 #include <faasrpc/coro_trampoline.h>
+#include <faasm/migrate.h>
 
 #include <coroutine>
 #include <cstdint>
