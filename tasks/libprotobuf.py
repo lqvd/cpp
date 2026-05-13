@@ -8,40 +8,14 @@ from shutil import rmtree
 from subprocess import run
 
 
-PROTOBUF_VERSION = "v3.21.12"
 PROTOBUF_SRC_DIR = join(PROJ_ROOT, "third-party", "protobuf")
 PROTOBUF_BUILD_DIR = join(PROTOBUF_SRC_DIR, "build-wasm32-wasi-threads")
-
-
-def do_protobuf_clone():
-    """
-    Clone protobuf source.
-    """
-    makedirs(join(PROJ_ROOT, "third-party"), exist_ok=True)
-
-    run(
-        [
-            "git",
-            "clone",
-            "-b",
-            PROTOBUF_VERSION,
-            "--depth",
-            "1",
-            "https://github.com/protocolbuffers/protobuf",
-            PROTOBUF_SRC_DIR,
-        ],
-        check=True,
-    )
-
 
 @task(default=True)
 def build(ctx, clean=False):
     """
     Build and install protobuf-lite for Faasm wasm32-wasi-threads.
     """
-    if not exists(PROTOBUF_SRC_DIR):
-        do_protobuf_clone()
-
     if not exists(join(PROTOBUF_SRC_DIR, "CMakeLists.txt")):
         raise RuntimeError(
             "Could not find CMakeLists.txt in {}".format(PROTOBUF_SRC_DIR)
@@ -69,7 +43,6 @@ def build(ctx, clean=False):
         "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
         "-Dprotobuf_BUILD_LIBPROTOC=OFF",
         "-Dprotobuf_BUILD_SHARED_LIBS=OFF",
-        "-Dprotobuf_BUILD_LIBPROTOBUF_LITE=ON",
         "-Dprotobuf_WITH_ZLIB=OFF",
         "-Dprotobuf_DISABLE_RTTI=ON",
     ]
