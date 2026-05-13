@@ -7,4 +7,6 @@ def build(ctx, clean=False, native=False, shared=False):
     """
     Builds Faabric RPC lib
     """
-    build_faasm_lib("libfaasrpc", clean=clean, native=native, shared=shared)
+    build_faasm_lib(
+        "libfaasrpc", clean=clean, native=native, shared=shared, threads=True
+    )

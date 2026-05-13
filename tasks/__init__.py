@@ -13,7 +13,9 @@ from . import libfaasmpi
 from . import libfaasrpc
 from . import libfake
 from . import libffi
+from . import libprotobuf
 from . import llvm
+from . import pb
 from . import zlib
 
 ns = Collection(
@@ -30,6 +32,8 @@ ns = Collection(
     libfaasrpc,
     libfake,
     libffi,
+    libprotobuf,
     llvm,
+    pb,
     zlib,
 )
