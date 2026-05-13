@@ -22,7 +22,7 @@
 	url = git@github.com:lqvd/protogen-faabric.git
 [submodule "third-party/protogen-faabric"]
 	path = third-party/protogen-faabric
-	url = git@github.com:lqvd/protogen-faabric.git
+	url = https://github.com/lqvd/protogen-faabric.git
 [submodule "third-party/protobuf"]
 	path = third-party/protobuf
 	url = https://github.com/lqvd/protobuf.git
