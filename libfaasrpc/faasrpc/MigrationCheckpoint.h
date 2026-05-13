@@ -16,9 +16,7 @@ struct MigrationCheckpoint {
     bool await_suspend(std::coroutine_handle<> h) noexcept {
         int32_t frameOffset = static_cast<int32_t>(
             reinterpret_cast<uintptr_t>(h.address()));
-        __faasm_migrate_point(
-            faabric::rpc::coro_trampoline_index(),
-            frameOffset);
+        __faasm_migrate_point(&__faasm_rpc_coro_trampoline, frameOffset);
         return false;
     }
 
