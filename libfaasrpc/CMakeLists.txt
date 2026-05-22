@@ -5,16 +5,24 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PUBLIC_HEADERS
+    faasrpc/core.h
     faasrpc/coro_trampoline.h
     faasrpc/faasrpc.h
     faasrpc/MigrationCheckpoint.h
     faasrpc/RpcCall.h
+    faasrpc/RpcReceive.h
+    faasrpc/Server.h
+    faasrpc/ServerBuilder.h
+    faasrpc/Service.h
     faasrpc/Task.h
 )
 
 set(LIB_FILES
+    core.cpp
     coro_trampoline.cpp
     faasrpc.cpp
+    Server.cpp
+    ServerBuilder.cpp
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
