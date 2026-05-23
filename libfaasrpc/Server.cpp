@@ -25,7 +25,7 @@ faabric::rpc::Task<void> Server::serveForever()
         IncomingRequest req = co_await RpcReceive{};
 
         std::vector<uint8_t> respData;
-        Rpc_Status status = co_await dispatch(
+        faabric::rpc::Status status = co_await dispatch(
           req.method,
           reinterpret_cast<const uint8_t*>(req.payload.data()),
           req.payload.size(),
@@ -43,7 +43,7 @@ faabric::rpc::Task<void> Server::serveForever()
     }
 }
 
-faabric::rpc::Task<Rpc_Status> Server::dispatch(
+faabric::rpc::Task<faabric::rpc::Status> Server::dispatch(
   const std::string& method,
   const uint8_t* payload,
   size_t payloadLen,
@@ -56,7 +56,7 @@ faabric::rpc::Task<Rpc_Status> Server::dispatch(
         }
     }
 
-    co_return Rpc_Status{
+    co_return faabric::rpc::Status{
         Rpc_StatusCode::UNIMPLEMENTED,
         "No service for method: " + method
     };

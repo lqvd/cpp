@@ -19,7 +19,7 @@ class Server
   private:
     std::unique_ptr<Service> service_;
 
-    faabric::rpc::Task<Rpc_Status> dispatch(
+    faabric::rpc::Task<faabric::rpc::Status> dispatch(
       const std::string& method,
       const uint8_t* payload,
       size_t payloadLen,

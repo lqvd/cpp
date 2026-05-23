@@ -7,7 +7,7 @@
 
 namespace faabric::rpc {
 
-struct Rpc_Status {
+struct Status {
     int code;
     std::string message;
     bool ok() const { return code == 0; }
@@ -19,7 +19,7 @@ class Service {
 public:
     virtual ~Service() = default;
 
-    virtual faabric::rpc::Task<Rpc_Status> HandleCall(
+    virtual faabric::rpc::Task<Status> HandleCall(
         const std::string& method,
         const uint8_t* reqData,
         size_t reqLen,

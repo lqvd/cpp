@@ -9,12 +9,13 @@
 class PingSvcImpl final : public rpc::PingSvc::Service
 {
   public:
-    Rpc_Status Ping(faabric::rpc::ServerContext* ctx,
-                    const rpc::PingRequest* req,
-                    rpc::PingResponse* resp) override
+    faabric::rpc::Task<faabric::rpc::Status> Ping(
+      faabric::rpc::ServerContext* ctx,
+      const rpc::PingRequest* req,
+      rpc::PingResponse* resp) override
     {
         resp->set_message("Pong: " + req->message());
-        return { Rpc_StatusCode::OK, "" };
+        co_return faabric::rpc::Status{Rpc_StatusCode::OK, ""};
     }
 };
 
