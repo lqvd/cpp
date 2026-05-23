@@ -23,6 +23,8 @@ set(LIB_FILES
     ServerBuilder.cpp
 )
 
+set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     message(STATUS "Libfaasrpc WebAssembly build")
 
@@ -30,9 +32,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     set_target_properties(faasrpc PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
     # Install faabricrpc stub library
-    set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
     set(FAABRIC_BINARY_DIR ${FAABRIC_SOURCE_DIR}/build)
     add_subdirectory(${FAABRIC_SOURCE_DIR} ${FAABRIC_BINARY_DIR})
+
+    target_include_directories(faasrpc PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${FAABRIC_SOURCE_DIR}
+    )
+
     target_link_libraries(faasrpc PUBLIC faabricrpc)
 
     install(
@@ -60,7 +67,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
 
     install(CODE
         "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
-            $ENV{FAASM_WASM_LIB_INSTALL_DIR}/include/faabric/rpc/rpc.h \
+            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h \
             $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h)"
     )
 
@@ -75,9 +82,14 @@ else()
 
     set_target_properties(faasrpc PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
-    set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
     set(FAABRIC_BINARY_DIR ${FAABRIC_SOURCE_DIR}/build-native)
     add_subdirectory(${FAABRIC_SOURCE_DIR} ${FAABRIC_BINARY_DIR})
+
+    target_include_directories(faasrpc PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${FAABRIC_SOURCE_DIR}
+    )
+
     target_link_libraries(faasrpc PUBLIC faabricrpc)
 
     install(
@@ -87,14 +99,10 @@ else()
         PUBLIC_HEADER DESTINATION include/faasrpc
     )
 
-    # Symlink rpc.h
-    install(CODE
-    "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
-            ${CMAKE_INSTALL_PREFIX}/include/faabric/rpc/rpc.h \
-            ${CMAKE_INSTALL_PREFIX}/include/rpc.h)"
+    install(
+        FILES ${FAABRIC_SOURCE_DIR}/rpc.h
+        DESTINATION include
     )
 endif()
-
-target_include_directories(faasrpc PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
 target_compile_features(faasrpc PUBLIC cxx_std_20)
