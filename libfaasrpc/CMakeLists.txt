@@ -23,7 +23,9 @@ set(LIB_FILES
     ServerBuilder.cpp
 )
 
-set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
+set(FAABRIC_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric)
+set(FAABRIC_SOURCE_DIR ${FAABRIC_ROOT_DIR}/src/rpc)
+set(FAABRIC_INCLUDE_DIR ${FAABRIC_ROOT_DIR}/include)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     message(STATUS "Libfaasrpc WebAssembly build")
@@ -31,13 +33,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     add_library(faasrpc STATIC ${LIB_FILES})
     set_target_properties(faasrpc PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
-    # Install faabricrpc stub library
+    # Build faabric rpc stub library from source
     set(FAABRIC_BINARY_DIR ${FAABRIC_SOURCE_DIR}/build)
     add_subdirectory(${FAABRIC_SOURCE_DIR} ${FAABRIC_BINARY_DIR})
 
     target_include_directories(faasrpc PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}
         ${FAABRIC_SOURCE_DIR}
+        ${FAABRIC_INCLUDE_DIR}
     )
 
     target_link_libraries(faasrpc PUBLIC faabricrpc)
@@ -54,21 +57,29 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         PUBLIC_HEADER DESTINATION $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/faasrpc
     )
 
+    # Install canonical faabric RPC C header path
     install(
-        FILES libfaasrpc.imports
-        DESTINATION $ENV{FAASM_WASM_LIB_INSTALL_DIR}
+        FILES ${FAABRIC_INCLUDE_DIR}/faabric/rpc/rpc.h
+        DESTINATION $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/faabric/rpc
     )
 
+    # Optional flat include path compatibility
+    install(CODE
+        "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
+            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/faabric/rpc/rpc.h \
+            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h)"
+    )
+
+    # Optional librpc compatibility link
     install(CODE
         "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
             $ENV{FAASM_WASM_LIB_INSTALL_DIR}/libfaabricrpc.a \
             $ENV{FAASM_WASM_LIB_INSTALL_DIR}/librpc.a)"
     )
 
-    install(CODE
-        "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
-            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h \
-            $ENV{FAASM_WASM_HEADER_INSTALL_DIR}/rpc.h)"
+    install(
+        FILES libfaasrpc.imports
+        DESTINATION $ENV{FAASM_WASM_LIB_INSTALL_DIR}
     )
 
 else()
@@ -88,6 +99,7 @@ else()
     target_include_directories(faasrpc PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}
         ${FAABRIC_SOURCE_DIR}
+        ${FAABRIC_INCLUDE_DIR}
     )
 
     target_link_libraries(faasrpc PUBLIC faabricrpc)
@@ -100,8 +112,8 @@ else()
     )
 
     install(
-        FILES ${FAABRIC_SOURCE_DIR}/rpc.h
-        DESTINATION include
+        FILES ${FAABRIC_INCLUDE_DIR}/faabric/rpc/rpc.h
+        DESTINATION include/faabric/rpc
     )
 endif()
 
