@@ -1,6 +1,6 @@
 #pragma once
 
-#include <rpc.h>
+#include <faabric/rpc/rpc.h>
 #include <faasrpc/coro_trampoline.h>
 
 #include <coroutine>
