@@ -1,8 +1,9 @@
 #include <faasrpc/Server.h>
 
+
+#include <faabric/rpc/rpc.h>
 #include <faasrpc/RpcReceive.h>
 #include <faasrpc/Task.h>
-#include <rpc.h>
 
 #include <coroutine>
 #include <utility>
