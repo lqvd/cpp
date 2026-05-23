@@ -1,7 +1,7 @@
 #pragma once
 
-#include <faasrpc/coro_trampoline.h>
 #include <rpc.h>
+#include <faasrpc/coro_trampoline.h>
 
 #include <coroutine>
 #include <string>

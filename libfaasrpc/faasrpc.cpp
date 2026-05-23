@@ -1,4 +1,4 @@
-#include "faasrpc/faasrpc.h"
+#include <faasrpc/faasrpc.h>
 
 int helloFaabricWasm()
 {

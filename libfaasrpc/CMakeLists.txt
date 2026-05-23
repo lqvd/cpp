@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PUBLIC_HEADERS
-    faasrpc/core.h
     faasrpc/coro_trampoline.h
     faasrpc/faasrpc.h
     faasrpc/MigrationCheckpoint.h
@@ -18,7 +17,6 @@ set(PUBLIC_HEADERS
 )
 
 set(LIB_FILES
-    core.cpp
     coro_trampoline.cpp
     faasrpc.cpp
     Server.cpp
@@ -35,7 +33,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
     set(FAABRIC_BINARY_DIR ${FAABRIC_SOURCE_DIR}/build)
     add_subdirectory(${FAABRIC_SOURCE_DIR} ${FAABRIC_BINARY_DIR})
-    add_dependencies(faasrpc faabricrpc)
+    target_link_libraries(faasrpc PUBLIC faabricrpc)
 
     install(
         FILES ${FAABRIC_BINARY_DIR}/libfaabricrpc.a
@@ -77,6 +75,11 @@ else()
 
     set_target_properties(faasrpc PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
+    set(FAABRIC_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../third-party/faabric/src/rpc)
+    set(FAABRIC_BINARY_DIR ${FAABRIC_SOURCE_DIR}/build-native)
+    add_subdirectory(${FAABRIC_SOURCE_DIR} ${FAABRIC_BINARY_DIR})
+    target_link_libraries(faasrpc PUBLIC faabricrpc)
+
     install(
         TARGETS faasrpc
         ARCHIVE DESTINATION lib
@@ -85,12 +88,10 @@ else()
     )
 
     # Symlink rpc.h
-    install(
-        CODE "execute_process( \
-        COMMAND ${CMAKE_COMMAND} -E create_symlink \
+    install(CODE
+    "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink \
             ${CMAKE_INSTALL_PREFIX}/include/faabric/rpc/rpc.h \
-            ${CMAKE_INSTALL_PREFIX}/include/rpc.h   \
-        )"
+            ${CMAKE_INSTALL_PREFIX}/include/rpc.h)"
     )
 endif()
 
