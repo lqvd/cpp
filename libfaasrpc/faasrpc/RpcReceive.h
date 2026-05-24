@@ -17,12 +17,8 @@ struct IncomingRequest {
 };
 
 class RpcReceive {
-public:
-    bool await_ready() const noexcept {
-        // Never ready synchronously... always suspend so the host can poll the
-        // queue with migration
-        return false;
-    }
+  public:
+    bool await_ready() const noexcept { return false; }
 
     bool await_suspend(std::coroutine_handle<> h) noexcept {
         int32_t frameOffset = static_cast<int32_t>(
@@ -32,8 +28,7 @@ public:
         int32_t payloadOffset, payloadLen;
         int32_t replyHostOffset, replyHostLen;
 
-        // Block in the host until a request arrives (with migration points)
-        __faasm_rpc_get_request(
+        status_ = __faasm_rpc_get_request(
             faabric::rpc::coro_trampoline_index(),
             frameOffset,
             &result_.requestId,
@@ -42,23 +37,27 @@ public:
             &replyHostOffset, &replyHostLen,
             &result_.replyPort);
 
-        // Resolve offsets into strings
-        result_.method = std::string(
-            reinterpret_cast<char*>(methodOffset), methodLen);
-        result_.payload = std::string(
-            reinterpret_cast<char*>(payloadOffset), payloadLen);
-        result_.replyHost = std::string(
-            reinterpret_cast<char*>(replyHostOffset), replyHostLen);
-
+        if (status_ == Rpc_StatusCode::OK) {
+            result_.method = std::string(
+                reinterpret_cast<char*>(methodOffset), methodLen);
+            result_.payload = std::string(
+                reinterpret_cast<char*>(payloadOffset), payloadLen);
+            result_.replyHost = std::string(
+                reinterpret_cast<char*>(replyHostOffset), replyHostLen);
+        }
         return false;
     }
 
-    IncomingRequest await_resume() noexcept {
+    std::optional<IncomingRequest> await_resume() noexcept {
+        if (status_ != Rpc_StatusCode::OK) {
+            return std::nullopt;
+        }
         return std::move(result_);
     }
 
-private:
+  private:
     IncomingRequest result_;
+    int32_t status_ = Rpc_StatusCode::OK;
 };
 
 } // namespace faabric::rpc
