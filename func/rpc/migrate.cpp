@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
 
     int32_t channelId = 0;
     int32_t createStatus =
-        Rpc_ChannelCreate("faabric://rpc/ping_svc", &channelId);
+        Rpc_ChannelCreate("faabric://rpc/PingSvc", &channelId);
 
     if (createStatus != Rpc_StatusCode::OK) {
         printf("[WASM] Rpc_ChannelCreate failed: %d\n", createStatus);
