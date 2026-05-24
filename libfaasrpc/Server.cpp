@@ -22,27 +22,31 @@ Server::Server(std::unique_ptr<Service> service)
 faabric::rpc::Task<void> Server::serveForever()
 {
     while (true) {
-        IncomingRequest req = co_await RpcReceive{};
+        auto maybeReq = co_await RpcReceive{};
+        if (!maybeReq) {
+            break;
+        }
+
+        IncomingRequest& req = *maybeReq;
 
         std::vector<uint8_t> respData;
         faabric::rpc::Status status = co_await dispatch(
-          req.method,
-          reinterpret_cast<const uint8_t*>(req.payload.data()),
-          req.payload.size(),
-          respData);
+            req.method,
+            reinterpret_cast<const uint8_t*>(req.payload.data()),
+            req.payload.size(),
+            respData);
 
         __faasm_rpc_send_response(
-          req.requestId,
-          req.replyHost.c_str(),
-          req.replyPort,
-          status.code,
-          respData.data(),
-          static_cast<int32_t>(respData.size()),
-          status.message.c_str(),
-          static_cast<int32_t>(status.message.size()));
+            req.requestId,
+            req.replyHost.c_str(),
+            req.replyPort,
+            status.code,
+            respData.data(),
+            static_cast<int32_t>(respData.size()),
+            status.message.c_str(),
+            static_cast<int32_t>(status.message.size()));
     }
 }
-
 faabric::rpc::Task<faabric::rpc::Status> Server::dispatch(
   const std::string& method,
   const uint8_t* payload,
