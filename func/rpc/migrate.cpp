@@ -23,43 +23,101 @@
 //   - ping_b is dispatched on host B
 // Returns Task<void> — the executor calls task.resume() once to start it.
 
-faabric::rpc::Task<void> runMigrationBenchmark(int32_t channelId,
-                                               std::string& output)
+faabric::rpc::Task<void> runMigrationBenchmark(
+    std::shared_ptr<faabric::rpc::Channel> channel,
+    std::string& output)
 {
-    rpc::PingSvc::Stub stub(channelId);
+    rpc::PingSvc::Stub stub(channel);
+
+    faabric::rpc::ClientContext ctxA;
+
+    rpc::PingRequest reqA;
+    reqA.set_message("Hello from host A");
 
     printf("[WASM] --- Dispatching RPC A sync ---\n");
-    rpc::PingResponse resp_a = co_await stub.Ping("Hello from host A");
-    output += resp_a.message() + "\n";
+
+    auto resultA = co_await stub.Ping(&ctxA, reqA);
+    if (!resultA.ok()) {
+        output += "RPC A failed: ";
+        output += resultA.status().message();
+        output += "\n";
+        co_return;
+    }
+
+    const rpc::PingResponse& respA = resultA.value();
+    output += respA.message() + "\n";
 
     printf("[WASM] RPC A complete. Response: '%s'\n",
-           resp_a.message().c_str());
+           respA.message().c_str());
 
     printf("[WASM] --- Dispatching RPC B async ---\n");
-    auto ping_b = stub.PingAsync("Hello from wherever we are now");
+
+    faabric::rpc::ClientContext ctxB;
+
+    rpc::PingRequest reqB;
+    reqB.set_message("Hello from wherever we are now");
+
+    auto pingB = stub.PingAsync(&ctxB, reqB);
 
     printf("[WASM] Waiting for RPC B (migration point 2)...\n");
-    rpc::PingResponse resp_b = co_await ping_b;
-    output += resp_b.message() + "\n";
+
+    auto resultB = co_await pingB;
+    if (!resultB.ok()) {
+        output += "RPC B failed: ";
+        output += resultB.status().message();
+        output += "\n";
+        co_return;
+    }
+
+    const rpc::PingResponse& respB = resultB.value();
+    output += respB.message() + "\n";
 
     printf("[WASM] RPC B complete. Response: '%s'\n",
-           resp_b.message().c_str());
+           respB.message().c_str());
 
     printf("[WASM] --- Fan-out: dispatching C and D simultaneously ---\n");
-    auto ping_c = stub.PingAsync("Fan-out C");
-    auto ping_d = stub.PingAsync("Fan-out D");
+
+    faabric::rpc::ClientContext ctxC;
+    faabric::rpc::ClientContext ctxD;
+
+    rpc::PingRequest reqC;
+    reqC.set_message("Fan-out C");
+
+    rpc::PingRequest reqD;
+    reqD.set_message("Fan-out D");
+
+    auto pingC = stub.PingAsync(&ctxC, reqC);
+    auto pingD = stub.PingAsync(&ctxD, reqD);
 
     printf("[WASM] Awaiting C (both C and D are in flight)...\n");
-    rpc::PingResponse resp_c = co_await ping_c;
-    output += resp_c.message() + "\n";
+
+    auto resultC = co_await pingC;
+    if (!resultC.ok()) {
+        output += "RPC C failed: ";
+        output += resultC.status().message();
+        output += "\n";
+        co_return;
+    }
+
+    const rpc::PingResponse& respC = resultC.value();
+    output += respC.message() + "\n";
 
     printf("[WASM] Awaiting D...\n");
-    rpc::PingResponse resp_d = co_await ping_d;
-    output += resp_d.message() + "\n";
+
+    auto resultD = co_await pingD;
+    if (!resultD.ok()) {
+        output += "RPC D failed: ";
+        output += resultD.status().message();
+        output += "\n";
+        co_return;
+    }
+
+    const rpc::PingResponse& respD = resultD.value();
+    output += respD.message() + "\n";
 
     printf("[WASM] Fan-out complete. C='%s' D='%s'\n",
-           resp_c.message().c_str(),
-           resp_d.message().c_str());
+           respC.message().c_str(),
+           respD.message().c_str());
 
     printf("[WASM] All RPC calls complete.\n");
     co_return;
@@ -69,25 +127,25 @@ int main(int argc, char* argv[])
 {
     printf("Starting coroutine RPC migration benchmark\n");
 
-    int32_t channelId = 0;
-    int32_t createStatus =
-        Rpc_ChannelCreate("faabric://rpc/PingSvc", &channelId);
+    std::shared_ptr<faabric::rpc::Channel> channel;
+    faabric::rpc::Status status =
+      faabric::rpc::CreateChannel(rpc::PingSvc::ServiceUri, &channel);
 
-    if (createStatus != Rpc_StatusCode::OK) {
-        printf("[WASM] Rpc_ChannelCreate failed: %d\n", createStatus);
+    if (!status.ok()) {
+        std::string output = "Failed to create RPC channel: ";
+        output += status.message();
+        output += "\n";
+
+        faasmSetOutput(output.c_str(), static_cast<long>(output.size()));
         return 1;
     }
-
-    printf("[WASM] Channel created: %d\n", channelId);
 
     std::string output;
 
     auto* task =
-        new faabric::rpc::Task<void>(runMigrationBenchmark(channelId, output));
+      new faabric::rpc::Task<void>(runMigrationBenchmark(channel, output));
 
     task->resume();
-
-    Rpc_ChannelClose(channelId);
     task->destroy();
 
     faasmSetOutput(output.c_str(), static_cast<long>(output.size()));

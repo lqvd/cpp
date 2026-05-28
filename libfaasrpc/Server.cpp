@@ -1,11 +1,12 @@
 #include <faasrpc/Server.h>
 
-
 #include <faabric/rpc/rpc.h>
 #include <faasrpc/RpcReceive.h>
 #include <faasrpc/Task.h>
 
 #include <coroutine>
+#include <cstdio>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -30,23 +31,35 @@ faabric::rpc::Task<void> Server::serveForever()
         IncomingRequest& req = *maybeReq;
 
         std::vector<uint8_t> respData;
-        faabric::rpc::Status status = co_await dispatch(
-            req.method,
-            reinterpret_cast<const uint8_t*>(req.payload.data()),
-            req.payload.size(),
-            respData);
 
-        __faasm_rpc_send_response(
-            req.requestId,
-            req.replyHost.c_str(),
-            req.replyPort,
-            status.code,
-            respData.data(),
-            static_cast<int32_t>(respData.size()),
-            status.message.c_str(),
-            static_cast<int32_t>(status.message.size()));
+        faabric::rpc::Status status = co_await dispatch(
+          req.method,
+          reinterpret_cast<const uint8_t*>(req.payload.data()),
+          req.payload.size(),
+          respData);
+
+        const std::string statusMessage(status.message());
+
+        int32_t sendStatus = __faasm_rpc_send_response(
+          req.requestId,
+          req.replyHost.c_str(),
+          req.replyPort,
+          status.code(),
+          respData.empty() ? nullptr : respData.data(),
+          static_cast<int32_t>(respData.size()),
+          statusMessage.empty() ? nullptr : statusMessage.c_str(),
+          static_cast<int32_t>(statusMessage.size()));
+
+        if (sendStatus != Rpc_StatusCode::OK) {
+            printf("[RPC Server] Failed to send response for request %u: %d\n",
+                   req.requestId,
+                   sendStatus);
+        }
     }
+
+    co_return;
 }
+
 faabric::rpc::Task<faabric::rpc::Status> Server::dispatch(
   const std::string& method,
   const uint8_t* payload,

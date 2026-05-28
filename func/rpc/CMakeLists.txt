@@ -1,7 +1,5 @@
 set(FAASM_USER rpc)
 
-add_subdirectory(common)
-
 # --------------
 # Protobuf / Faabric stub generation
 # --------------
@@ -12,9 +10,7 @@ file(MAKE_DIRECTORY "${GENERATED_DIR}")
 
 set(PLUGIN_BIN "${CMAKE_SOURCE_DIR}/../build/protogen-faabric/protoc-gen-faabric")
 
-set(RPC_PROTOS
-    "${PROTO_DIR}/Ping.proto"
-)
+file(GLOB RPC_PROTOS "${PROTO_DIR}/*.proto")
 
 set(GENERATED_PB_SRCS "")
 set(ALL_GENERATED "")
@@ -126,7 +122,6 @@ function(rpc_func exec_name source_file)
     target_link_libraries(${exec_name}
         faasrpc
         rpc
-        rpc_dist_test_common
         rpc_generated_stubs
         rpc_generated_pb
     )
@@ -148,11 +143,9 @@ function(rpc_func exec_name source_file)
     set(ALL_RPC_FUNCS ${ALL_RPC_FUNCS} ${exec_name} PARENT_SCOPE)
 endfunction()
 
+rpc_func(AggSvc agg_svc.cpp)
 rpc_func(PingSvc ping_svc.cpp)
 rpc_func(migrate_rpc migrate.cpp)
-rpc_func(coro coroutine_layout.cpp)
-rpc_func(rpc_forwarding rpc_forwarding.cpp)
-rpc_func(rpc_pending rpc_pending.cpp)
-rpc_func(rpc_cached rpc_cached.cpp)
+# rpc_func(coro coroutine_layout.cpp)
 
 add_custom_target(rpc_all_funcs DEPENDS ${ALL_RPC_FUNCS})

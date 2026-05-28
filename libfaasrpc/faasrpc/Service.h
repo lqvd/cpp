@@ -1,36 +1,44 @@
 #pragma once
 
+#include <faasrpc/Status.h>
 #include <faasrpc/Task.h>
+
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace faabric::rpc {
 
-struct Status {
-    int code;
-    std::string message;
-    bool ok() const { return code == 0; }
+class ServerContext
+{
+  public:
+    ServerContext() = default;
 };
 
-class ServerContext {};
-
-class Service {
-public:
+class Service
+{
+  public:
     virtual ~Service() = default;
 
-    virtual faabric::rpc::Task<Status> HandleCall(
+    virtual faabric::rpc::Task<faabric::rpc::Status> HandleCall(
         const std::string& method,
         const uint8_t* reqData,
         size_t reqLen,
         std::vector<uint8_t>& respData) = 0;
 
-    const std::vector<std::string>& Methods() const { return methods_; }
+    const std::vector<std::string>& Methods() const
+    {
+        return methods_;
+    }
 
-protected:
-    void AddMethod(const std::string& name) { methods_.push_back(name); }
+  protected:
+    void AddMethod(const std::string& name)
+    {
+        methods_.push_back(name);
+    }
 
-private:
+  private:
     std::vector<std::string> methods_;
 };
 

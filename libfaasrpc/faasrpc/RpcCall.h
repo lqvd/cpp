@@ -1,91 +1,161 @@
 #pragma once
 
 #include <faabric/rpc/rpc.h>
+#include <faasrpc/Status.h>
 #include <faasrpc/coro_trampoline.h>
 
 #include <coroutine>
 #include <cstdio>
 #include <cstdint>
-#include <stdexcept>
+#include <optional>
 #include <string>
-
+#include <utility>
 
 namespace faabric::rpc {
 
-// `RpcCall` is a Faasm-specific `Awaitable` which encapsulates Faasm's RPC and
-// migration semantics. `RpcCall` implements the coroutine await interface,
-// integrating directly with the coroutine model, providing natural suspension
-// points that are aware of Faasm's runtime behaviour.
+// `RpcCall` is a Faasm-specific awaitable representing one in-flight unary RPC.
 //
-// `RpcCall` coordinates waiting for RPC completion with migration, allowing
-// suspended coroutines to be safely snapshotted and restored on another host
-// without exposing these runtime details to the user.
+// Awaiting it waits at a migration-aware suspension point and returns either:
+//   - StatusOr<T>{response} on success;
+//   - StatusOr<T>{Status{...}} on failure.
 //
-// Use the unary `co_await` on `RpcCall<T>` objects.
 // RpcCalls are single-use.
 template <typename T>
-class RpcCall {
+class RpcCall
+{
   public:
-    explicit RpcCall(int32_t requestId)
-      : requestId(requestId)
+    explicit RpcCall(uint32_t requestIdIn)
+      : requestId(requestIdIn)
     {}
 
-    // Not copyable — owns the requestId
+    static RpcCall<T> Failed(Status status)
+    {
+        RpcCall<T> call(0);
+        call.immediateStatus = std::move(status);
+        return call;
+    }
+
     RpcCall(const RpcCall&) = delete;
     RpcCall& operator=(const RpcCall&) = delete;
-    RpcCall(RpcCall&&) = default;
-    RpcCall& operator=(RpcCall&&) = default;
 
-    bool await_ready() const noexcept
+    RpcCall(RpcCall&& other) noexcept
+      : requestId(other.requestId)
+      , waitStatus(other.waitStatus)
+      , immediateStatus(std::move(other.immediateStatus))
     {
+        other.requestId = 0;
+        other.waitStatus = Rpc_StatusCode::OK;
+    }
+
+    RpcCall& operator=(RpcCall&& other) noexcept
+    {
+        if (this != &other) {
+            requestId = other.requestId;
+            waitStatus = other.waitStatus;
+            immediateStatus = std::move(other.immediateStatus);
+
+            other.requestId = 0;
+            other.waitStatus = Rpc_StatusCode::OK;
+        }
+
+        return *this;
+    }
+
+    bool await_ready() const
+    {
+        if (immediateStatus.has_value()) {
+            return true;
+        }
+
         return __faasm_rpc_test_response(requestId) != 0;
     }
 
-    bool await_suspend(std::coroutine_handle<> h) noexcept
+    bool await_suspend(std::coroutine_handle<> h)
     {
-        // If migration happens inside wait_migratable, the frame at this
-        // offset is snapshotted and resumed on the new host. The new host
-        // reconstructs the handle and calls
-        // resume(), continuing from await_resume() below.
-        printf("[RpcCall] suspended %d\n", requestId);
+        if (immediateStatus.has_value()) {
+            return false;
+        }
+
+        printf("[RpcCall] suspended %u\n", requestId);
+
         int32_t frameOffset = static_cast<int32_t>(
-            reinterpret_cast<uintptr_t>(h.address()));
+          reinterpret_cast<uintptr_t>(h.address()));
 
-        __faasm_rpc_wait_migratable(
-            requestId,
-            faabric::rpc::coro_trampoline_index(),
-            frameOffset);
+        waitStatus = __faasm_rpc_wait_migratable(
+          requestId,
+          faabric::rpc::coro_trampoline_index(),
+          frameOffset);
 
-        // Resume and continue execution by returning false.
+        // `wait_migratable` only returns once the response is ready or once a
+        // wait-level failure occurs. Return false so the coroutine continues
+        // immediately into await_resume().
         return false;
     }
 
-    T await_resume() noexcept
+    StatusOr<T> await_resume()
     {
-        printf("[RpcCall] resuming %d\n", requestId);
-        while (__faasm_rpc_test_response(requestId) == 0) {}
+        if (immediateStatus.has_value()) {
+            return StatusOr<T>{ *immediateStatus };
+        }
+
+        if (waitStatus != Rpc_StatusCode::OK) {
+            return StatusOr<T>{
+                Status{ waitStatus, "RPC wait_migratable failed" }
+            };
+        }
+
+        printf("[RpcCall] resuming %u\n", requestId);
+
+        while (__faasm_rpc_test_response(requestId) == 0) {
+            // Defensive. Normally wait_migratable only returns when ready.
+        }
 
         int32_t respOffset = 0;
         int32_t respLen = 0;
+        int32_t errorMsgOffset = 0;
+        int32_t errorMsgLen = 0;
 
-        // get_response also handles double consumption, and will handle via
-        // return code
-        printf("[RpcCall] consuming %d\n", requestId);
-        int32_t status =
-            __faasm_rpc_get_response(requestId, &respOffset, &respLen);
+        printf("[RpcCall] consuming %u\n", requestId);
+
+        int32_t statusCode = __faasm_rpc_get_response(
+          requestId,
+          &respOffset,
+          &respLen,
+          &errorMsgOffset,
+          &errorMsgLen);
+
+        if (statusCode != Rpc_StatusCode::OK) {
+            std::string errorMessage = "RPC get_response failed";
+
+            if (errorMsgOffset != 0 && errorMsgLen > 0) {
+                errorMessage.assign(
+                  reinterpret_cast<const char*>(errorMsgOffset),
+                  static_cast<size_t>(errorMsgLen));
+            }
+
+            printf("[RpcCall] get_response failed status=%d msg='%s'\n",
+                   statusCode,
+                   errorMessage.c_str());
+
+            return StatusOr<T>{ Status{ statusCode, std::move(errorMessage) } };
+        }
 
         T resp;
-        if (status == 0) {
-            resp.ParseFromArray(
-                reinterpret_cast<const void*>(respOffset), respLen);
-        } else {
-            printf("[RpcCall] get_response failed status=%d\n", status);
+        if (!resp.ParseFromArray(
+              reinterpret_cast<const void*>(respOffset), respLen)) {
+            return StatusOr<T>{
+                Status{ Rpc_StatusCode::INTERNAL,
+                        "RPC response deserialisation failed" }
+            };
         }
-        return resp;
+
+        return StatusOr<T>{ std::move(resp) };
     }
 
   private:
-    int32_t requestId;
+    uint32_t requestId = 0;
+    int32_t waitStatus = Rpc_StatusCode::OK;
+    std::optional<Status> immediateStatus;
 };
 
-}   // namespace faabric::rpc
+} // namespace faabric::rpc

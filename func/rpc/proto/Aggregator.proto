@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+
+package rpc;
+
+message AggregateRequest {
+    string message = 1;
+}
+
+message AggregateResponse {
+    string message = 1;
+}
+
+service AggregatorSvc {
+    rpc Aggregate(AggregateRequest) returns (AggregateResponse);
+}
