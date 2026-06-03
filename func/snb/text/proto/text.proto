@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+import "common/social_types.proto";
+
+service TextService {
+  rpc ComposeText(ComposeTextRequest) returns (TextServiceReturn);
+}
+
+message ComposeTextRequest {
+  int64 req_id = 1;
+  string text = 2;
+}

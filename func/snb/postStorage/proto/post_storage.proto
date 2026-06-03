@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+import "common/social_types.proto";
+
+service PostStorageService {
+  rpc StorePost(StorePostRequest) returns (Empty);
+  rpc GetStoredPostCount(Empty) returns (StoredPostCount);
+}
+
+message StorePostRequest {
+  int64 req_id = 1;
+  Post post = 2;
+}
+
+message StoredPostCount {
+  int64 count = 1;
+}

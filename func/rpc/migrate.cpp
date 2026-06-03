@@ -57,7 +57,7 @@ faabric::rpc::Task<void> runMigrationBenchmark(
     rpc::PingRequest reqB;
     reqB.set_message("Hello from wherever we are now");
 
-    auto pingB = stub.PingAsync(&ctxB, reqB);
+    auto pingB = stub.AsyncPing(&ctxB, reqB);
 
     printf("[WASM] Waiting for RPC B (migration point 2)...\n");
 
@@ -86,8 +86,8 @@ faabric::rpc::Task<void> runMigrationBenchmark(
     rpc::PingRequest reqD;
     reqD.set_message("Fan-out D");
 
-    auto pingC = stub.PingAsync(&ctxC, reqC);
-    auto pingD = stub.PingAsync(&ctxD, reqD);
+    auto pingC = stub.AsyncPing(&ctxC, reqC);
+    auto pingD = stub.AsyncPing(&ctxD, reqD);
 
     printf("[WASM] Awaiting C (both C and D are in flight)...\n");
 

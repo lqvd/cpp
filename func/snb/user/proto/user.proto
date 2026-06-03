@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+import "common/social_types.proto";
+
+service UserService {
+  rpc ComposeCreatorWithUserId(ComposeCreatorWithUserIdRequest) returns (Creator);
+}
+
+message ComposeCreatorWithUserIdRequest {
+  int64 req_id = 1;
+  int64 user_id = 2;
+  string username = 3;
+}

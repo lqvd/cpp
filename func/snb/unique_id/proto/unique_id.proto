@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+import "common/social_types.proto";
+
+service UniqueIdService {
+  rpc ComposeUniqueId(ComposeUniqueIdRequest) returns (ComposeUniqueIdResponse);
+}
+
+message ComposeUniqueIdRequest {
+  int64 req_id = 1;
+  PostType post_type = 2;
+}
+
+message ComposeUniqueIdResponse {
+  int64 id = 1;
+}

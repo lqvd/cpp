@@ -20,7 +20,7 @@ def _is_threaded_func(user, func):
     Work out if the function requires using the wasm32-wasi or the
     wasm32-wasi-threads target
     """
-    return user in ["threads", "omp", "rpc"]
+    return user in ["threads", "omp", "rpc", "snb"]
 
 
 def _get_all_user_funcs(user):
@@ -190,5 +190,6 @@ def local(ctx, clean=False, debug=False):
 
     # Threaded users
     user(ctx, "omp", clean, debug)
+    user(ctx, "snb", clean, debug)
     user(ctx, "rpc", clean, debug)
     user(ctx, "threads", clean, debug)

@@ -45,8 +45,8 @@ class AggregatorSvcImpl final : public rpc::AggregatorSvc::Service
 
         printf("[AggregatorSvc] Dispatching fan-out RPCs\n");
 
-        auto pingA = pingStub->PingAsync(&ctxA, reqA);
-        auto pingB = pingStub->PingAsync(&ctxB, reqB);
+        auto pingA = pingStub->AsyncPing(&ctxA, reqA);
+        auto pingB = pingStub->AsyncPing(&ctxB, reqB);
 
         printf("[AggregatorSvc] Awaiting ping A\n");
         auto resultA = co_await pingA;

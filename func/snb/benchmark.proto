@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+message LatencyStats {
+  int64 p50_ns = 1;
+  int64 p99_ns = 2;
+  int64 p999_ns = 3;
+  int64 min_ns = 4;
+  int64 max_ns = 5;
+  int64 mean_ns = 6;
+}
+
+message BenchmarkClientResult {
+  int32 total_requests = 1;
+  int32 successful_requests = 2;
+  int32 failed_requests = 3;
+
+  int64 total_duration_ns = 4;
+  double throughput_rps = 5;
+
+  int64 stored_post_count = 6;
+
+  LatencyStats latency = 7;
+  repeated int64 raw_latencies_ns = 8;
+}

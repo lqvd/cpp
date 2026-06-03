@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+message Empty {}
+
+enum PostType {
+  POST_TYPE_UNSPECIFIED = 0;
+  POST = 1;
+  REPOST = 2;
+  REPLY = 3;
+  DM = 4;
+}
+
+message User {
+  int64 user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string username = 4;
+  string password_hashed = 5;
+  string salt = 6;
+}
+
+message Media {
+  int64 media_id = 1;
+  string media_type = 2;
+}
+
+message Url {
+  string shortened_url = 1;
+  string expanded_url = 2;
+}
+
+message UserMention {
+  int64 user_id = 1;
+  string username = 2;
+}
+
+message Creator {
+  int64 user_id = 1;
+  string username = 2;
+}
+
+message TextServiceReturn {
+  string text = 1;
+  repeated UserMention user_mentions = 2;
+  repeated Url urls = 3;
+}
+
+message Post {
+  int64 post_id = 1;
+  Creator creator = 2;
+  int64 req_id = 3;
+  string text = 4;
+  repeated UserMention user_mentions = 5;
+  repeated Media media = 6;
+  repeated Url urls = 7;
+  int64 timestamp = 8;
+  PostType post_type = 9;
+}

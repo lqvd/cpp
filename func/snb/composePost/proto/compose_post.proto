@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package snb;
+
+option optimize_for = LITE_RUNTIME;
+
+import "common/social_types.proto";
+
+service ComposePostService {
+  rpc ComposePost(ComposePostRequest) returns (Empty);
+}
+
+message ComposePostRequest {
+  int64 req_id = 1;
+  string username = 2;
+  int64 user_id = 3;
+  string text = 4;
+  repeated int64 media_ids = 5;
+  repeated string media_types = 6;
+  PostType post_type = 7;
+}
