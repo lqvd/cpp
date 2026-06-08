@@ -146,6 +146,7 @@ endfunction()
 rpc_func(AggSvc agg_svc.cpp)
 rpc_func(PingSvc ping_svc.cpp)
 rpc_func(migrate_rpc migrate.cpp)
+rpc_func(StressTest stress-test.cpp)
 # rpc_func(coro coroutine_layout.cpp)
 
 add_custom_target(rpc_all_funcs DEPENDS ${ALL_RPC_FUNCS})
