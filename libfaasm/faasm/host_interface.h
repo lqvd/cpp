@@ -100,6 +100,9 @@ HOST_IFACE_FUNC
 void __faasm_write_output(const char* output, long outputLen);
 
 HOST_IFACE_FUNC
+void __faasm_write_raw_output_bytes(const uint8_t* output, long outputLen);
+
+HOST_IFACE_FUNC
 unsigned int __faasm_chain_name(const char* name,
                                 const unsigned char* inputData,
                                 long inputDataSize);

@@ -158,6 +158,11 @@ extern "C"
     void faasmSetOutput(const char* newOutput, long outputLen);
 
     /**
+    * Sets binary output data for this function.
+    */
+    void faasmSetRawOutputBytes(const uint8_t* newOutput, long outputLen);
+
+    /**
      * Chains a function with the given input data
      */
     unsigned int faasmChainNamed(const char* name,

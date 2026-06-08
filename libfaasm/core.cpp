@@ -146,6 +146,11 @@ void faasmSetOutput(const char* newOutput, long outputLen)
     __faasm_write_output(newOutput, outputLen);
 }
 
+void faasmSetRawOutputBytes(const uint8_t* newOutput, long outputLen)
+{
+    __faasm_write_raw_output_bytes(newOutput, outputLen);
+}
+
 unsigned int faasmAwaitCall(unsigned int messageId)
 {
     return __faasm_await_call(messageId);
