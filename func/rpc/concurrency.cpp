@@ -66,7 +66,7 @@ Args parseArgs(int argc, char* argv[])
     return args;
 }
 
-uint64_t nowNs()
+int64_t nowNs()
 {
     using namespace std::chrono;
     return duration_cast<nanoseconds>(
@@ -80,11 +80,19 @@ void appendCsvRow(std::ostringstream& out,
                   int slotIdx,
                   int concurrency,
                   int payloadBytes,
-                  uint64_t startNs,
-                  uint64_t endNs,
+                  int64_t startNs,
+                  int64_t endNs,
                   bool ok,
                   const std::string& status)
 {
+    int64_t latencyNs = endNs - startNs;
+
+    if (latencyNs < 0) {
+        // Keep the row parseable and make clock problems obvious.
+        ok = false;
+        latencyNs = -1;
+    }
+
     out << requestIdx << ","
         << batchIdx << ","
         << slotIdx << ","
@@ -92,11 +100,10 @@ void appendCsvRow(std::ostringstream& out,
         << payloadBytes << ","
         << startNs << ","
         << endNs << ","
-        << (endNs - startNs) << ","
+        << latencyNs << ","
         << (ok ? 1 : 0) << ","
         << status << "\n";
 }
-
 } // namespace
 
 faabric::rpc::Task<void> runEchoBenchmark(
@@ -117,7 +124,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
     int successes = 0;
     int failures = 0;
 
-    const uint64_t benchStartNs = nowNs();
+    const int64_t benchStartNs = nowNs();
 
     while (issued < args.totalRequests) {
         const int batchSize =
@@ -125,7 +132,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
 
         std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
         std::vector<rpc::EchoRequest> reqs(batchSize);
-        std::vector<uint64_t> startTimes(batchSize);
+        std::vector<int64_t> startTimes(batchSize);
         std::vector<int> requestIdxs(batchSize);
 
         using EchoCall = faabric::rpc::RpcCall<rpc::EchoResponse>;
@@ -147,7 +154,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
         for (int i = 0; i < batchSize; i++) {
             auto result = co_await calls[i];
 
-            const uint64_t endNs = nowNs() - benchStartNs;
+            const int64_t endNs = nowNs() - benchStartNs;
 
             bool ok = result.ok();
             std::string status = "OK";
@@ -207,7 +214,7 @@ faabric::rpc::Task<void> runNoopBenchmark(
     int successes = 0;
     int failures = 0;
 
-    const uint64_t benchStartNs = nowNs();
+    const int64_t benchStartNs = nowNs();
 
     while (issued < args.totalRequests) {
         const int batchSize =
@@ -215,7 +222,7 @@ faabric::rpc::Task<void> runNoopBenchmark(
 
         std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
         std::vector<rpc::NoopRequest> reqs(batchSize);
-        std::vector<uint64_t> startTimes(batchSize);
+        std::vector<int64_t> startTimes(batchSize);
         std::vector<int> requestIdxs(batchSize);
 
         using NoopCall = faabric::rpc::RpcCall<rpc::NoopResponse>;
@@ -233,7 +240,7 @@ faabric::rpc::Task<void> runNoopBenchmark(
         for (int i = 0; i < batchSize; i++) {
             auto result = co_await calls[i];
 
-            const uint64_t endNs = nowNs() - benchStartNs;
+            const int64_t endNs = nowNs() - benchStartNs;
 
             bool ok = result.ok();
             std::string status = "OK";
