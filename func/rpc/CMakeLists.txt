@@ -145,6 +145,7 @@ endfunction()
 
 rpc_func(AggSvc agg_svc.cpp)
 rpc_func(BenchSvc bench_svc.cpp)
+rpc_func(SteadyStateBench concurrency.cpp)
 rpc_func(PingSvc ping_svc.cpp)
 rpc_func(migrate_rpc migrate.cpp)
 rpc_func(StressTest stress-test.cpp)
