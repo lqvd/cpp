@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+
+package rpc;
+
+service BenchSvc {
+  rpc Noop(NoopRequest) returns (NoopResponse);
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
+
+message NoopRequest {}
+
+message NoopResponse {}
+
+message EchoRequest {
+  bytes payload = 1;
+}
+
+message EchoResponse {
+  bytes payload = 1;
+}

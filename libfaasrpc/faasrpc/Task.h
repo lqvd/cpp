@@ -17,12 +17,8 @@ namespace faabric::rpc {
 // Note the Task<void> specialisation. One could also use Task<std::monotype>
 // and it would work with the Task<T> version, but they should be functionally
 // the same, with Task<void> probably making more sense.
-
-// Base coroutine. Must be constructed on the heap via `new` to avoid LLVM
-// optimising it into the stack and then preventing Faasm from capturing objects
-// within the `Task<T>`-returning function.
 //
-// Based heavily on `libcoro::Task<T>`. See
+// Based on `libcoro::Task<T>`. See
 // https://github.com/jbaldwin/libcoro/blob/main/include/coro/task.hpp.
 template <typename T>
 class [[nodiscard]] Task {
@@ -306,7 +302,7 @@ class [[nodiscard]] Task<void> {
 
         bool await_ready() const noexcept
         {
-            return coroutine && coroutine.done();
+            return !coroutine || coroutine.done();
         }
 
         std::coroutine_handle<> await_suspend(
