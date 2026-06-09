@@ -5,6 +5,7 @@
 #include <faasrpc/RpcCall.h>
 #include <faasrpc/Status.h>
 #include <faasrpc/Task.h>
+#include <faasm/time.h>
 
 #include <rpc.h>
 
@@ -12,7 +13,6 @@
 #include "Bench.pb.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -66,12 +66,11 @@ Args parseArgs(int argc, char* argv[])
     return args;
 }
 
-int64_t nowNs()
+int64_t relNsSince(double benchStartSec)
 {
-    using namespace std::chrono;
-    return duration_cast<nanoseconds>(
-             steady_clock::now().time_since_epoch())
-      .count();
+    double nowSec = faasm::getSecondsSinceEpoch();
+    double relSec = nowSec - benchStartSec;
+    return static_cast<int64_t>(std::llround(relSec * 1e9));
 }
 
 void appendCsvRow(std::ostringstream& out,
@@ -87,12 +86,6 @@ void appendCsvRow(std::ostringstream& out,
 {
     int64_t latencyNs = endNs - startNs;
 
-    if (latencyNs < 0) {
-        // Keep the row parseable and make clock problems obvious.
-        ok = false;
-        latencyNs = -1;
-    }
-
     out << requestIdx << ","
         << batchIdx << ","
         << slotIdx << ","
@@ -104,6 +97,7 @@ void appendCsvRow(std::ostringstream& out,
         << (ok ? 1 : 0) << ","
         << status << "\n";
 }
+
 } // namespace
 
 faabric::rpc::Task<void> runEchoBenchmark(
@@ -124,7 +118,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
     int successes = 0;
     int failures = 0;
 
-    const int64_t benchStartNs = nowNs();
+    const double benchStartSec = faasm::getSecondsSinceEpoch();
 
     while (issued < args.totalRequests) {
         const int batchSize =
@@ -146,7 +140,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
 
             reqs[i].set_payload(payload);
 
-            startTimes[i] = nowNs() - benchStartNs;
+            startTimes[i] = relNsSince(benchStartSec);
             calls.push_back(stub.AsyncEcho(&ctxs[i], reqs[i]));
         }
 
@@ -154,7 +148,7 @@ faabric::rpc::Task<void> runEchoBenchmark(
         for (int i = 0; i < batchSize; i++) {
             auto result = co_await calls[i];
 
-            const int64_t endNs = nowNs() - benchStartNs;
+            const int64_t endNs = relNsSince(benchStartSec);
 
             bool ok = result.ok();
             std::string status = "OK";
@@ -214,7 +208,7 @@ faabric::rpc::Task<void> runNoopBenchmark(
     int successes = 0;
     int failures = 0;
 
-    const int64_t benchStartNs = nowNs();
+    const double benchStartSec = faasm::getSecondsSinceEpoch();
 
     while (issued < args.totalRequests) {
         const int batchSize =
@@ -233,14 +227,14 @@ faabric::rpc::Task<void> runNoopBenchmark(
             const int requestIdx = issued + i;
             requestIdxs[i] = requestIdx;
 
-            startTimes[i] = nowNs() - benchStartNs;
+            startTimes[i] = relNsSince(benchStartSec);
             calls.push_back(stub.AsyncNoop(&ctxs[i], reqs[i]));
         }
 
         for (int i = 0; i < batchSize; i++) {
             auto result = co_await calls[i];
 
-            const int64_t endNs = nowNs() - benchStartNs;
+            const int64_t endNs = relNsSince(benchStartSec);
 
             bool ok = result.ok();
             std::string status = "OK";
