@@ -70,7 +70,7 @@ class RpcCall
         return __faasm_rpc_test_response(requestId) != 0;
     }
 
-    bool await_suspend(std::coroutine_handle<> h)
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)
     {
         if (immediateStatus.has_value()) {
             return false;
@@ -86,10 +86,7 @@ class RpcCall
           faabric::rpc::coro_trampoline_index(),
           frameOffset);
 
-        // `wait_migratable` only returns once the response is ready or once a
-        // wait-level failure occurs. Return false so the coroutine continues
-        // immediately into await_resume().
-        return false;
+        return h;
     }
 
     StatusOr<T> await_resume()
