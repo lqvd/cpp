@@ -245,6 +245,7 @@ def get_faasm_build_env_dict(is_threads=False):
             "relaxed-simd",
             "sign-ext",
             "simd128",
+            "tail-call",
         ]
     else:
         wasm_triple = "wasm32-wasi"
@@ -257,6 +258,7 @@ def get_faasm_build_env_dict(is_threads=False):
             "simd128",
             "reference-types",
             "multivalue",
+            "tail-call",
         ]
 
     build_env_dicts["FAASM_WASM_HEADER_INSTALL_DIR"] = join(

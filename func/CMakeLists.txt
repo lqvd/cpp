@@ -7,7 +7,10 @@ project(faasm-func)
 # the build environment file (faasmtools/build.py)
 # -----------------------------------------
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(FAASM_NATIVE_INSTALL $ENV{FAASM_NATIVE_INSTALL_DIR})
 
@@ -16,7 +19,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "WASI")
     set(CMAKE_EXE_LINKER_FLAGS
         "${CMAKE_EXE_LINKER_FLAGS} -Xlinker --export=_faasm_zygote"
     )
+    set(FAASM_WASM_TAIL_CALL_FLAGS "-mtail-call")
+
     message(STATUS "Detected wasm build (sysroot=$ENV{FAASM_WASM_SYSROOT})")
+    message(STATUS "Enabling Wasm tail-call codegen for Faasm functions")
     set(CMAKE_EXECUTABLE_SUFFIX ".wasm")
 endif ()
 
@@ -27,23 +33,40 @@ if (CMAKE_SYSTEM_NAME STREQUAL "WASI")
 
     set(FAASM_FUNC_LIBS faasm)
 
+    function(faasm_apply_wasm_target_options target_name)
+        target_compile_options(${target_name} PRIVATE
+            ${FAASM_WASM_TAIL_CALL_FLAGS}
+        )
+
+        # CMake 3.8 does not have target_link_options, so use LINK_FLAGS.
+        get_target_property(existing_link_flags ${target_name} LINK_FLAGS)
+        if (NOT existing_link_flags)
+            set(existing_link_flags "")
+        endif ()
+
+        set_target_properties(${target_name} PROPERTIES
+            LINK_FLAGS "${existing_link_flags} ${FAASM_WASM_TAIL_CALL_FLAGS}"
+        )
+    endfunction()
+
     function(faasm_func_c func_name file_name)
         add_executable(${func_name} ${file_name})
         target_link_libraries(${func_name} ${FAASM_FUNC_LIBS})
+        faasm_apply_wasm_target_options(${func_name})
     endfunction(faasm_func_c)
 
     function(faasm_func func_name file_name)
         add_executable(${func_name} ${file_name})
         target_link_libraries(${func_name} ${FAASM_FUNC_LIBS})
+        faasm_apply_wasm_target_options(${func_name})
     endfunction(faasm_func)
 
     function(faasm_dynamic_func func_name file_name)
         faasm_func(${func_name} ${file_name})
 
         set_target_properties(${func_name} PROPERTIES
-            LINK_FLAGS $ENV{FAASM_WASM_EXE_LINKER_FLAGS_SHARED}
+            LINK_FLAGS "$ENV{FAASM_WASM_EXE_LINKER_FLAGS_SHARED} ${FAASM_WASM_TAIL_CALL_FLAGS}"
         )
-
     endfunction(faasm_dynamic_func)
 else ()
     # ----------------------
