@@ -73,7 +73,7 @@ class RpcCall
     std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)
     {
         if (immediateStatus.has_value()) {
-            return false;
+            return h;
         }
 
         printf("[RpcCall] suspended %u\n", requestId);
