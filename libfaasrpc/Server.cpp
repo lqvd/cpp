@@ -32,11 +32,13 @@ faabric::rpc::Task<void> Server::serveForever()
 
         std::vector<uint8_t> respData;
 
-        faabric::rpc::Status status = co_await dispatch(
-          req.method,
-          reinterpret_cast<const uint8_t*>(req.payload.data()),
-          req.payload.size(),
-          respData);
+        auto dispatchTask = 
+          dispatch(
+            req.method,
+            reinterpret_cast<const uint8_t*>(req.payload.data()),
+            req.payload.size(),
+            respData);
+        faabric::rpc::Status status = co_await dispatchTask;
 
         const std::string statusMessage(status.message());
 
@@ -68,8 +70,11 @@ faabric::rpc::Task<faabric::rpc::Status> Server::dispatch(
 {
     for (const auto& m : service_->Methods()) {
         if (m == method) {
-            co_return co_await service_->HandleCall(
-              method, payload, payloadLen, respData);
+            auto callTask =
+              service_->HandleCall(method, payload, payloadLen, respData);
+
+            faabric::rpc::Status status = co_await callTask;
+            co_return status;
         }
     }
 
