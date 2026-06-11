@@ -3,6 +3,7 @@
 #include <faabric/rpc/rpc.h>
 #include <faasrpc/RpcReceive.h>
 #include <faasrpc/Task.h>
+#include <faasrpc/Yield.h>
 
 #include <coroutine>
 #include <cstdio>
@@ -23,40 +24,43 @@ Server::Server(std::unique_ptr<Service> service)
 faabric::rpc::Task<void> Server::serveForever()
 {
     while (true) {
-        auto maybeReq = co_await RpcReceive{};
-        if (!maybeReq) {
-            break;
-        }
+        {
+            auto maybeReq = co_await RpcReceive{};
 
-        IncomingRequest& req = *maybeReq;
+            if (!maybeReq) {
+                break;
+            }
 
-        std::vector<uint8_t> respData;
+            IncomingRequest& req = *maybeReq;
+            std::vector<uint8_t> respData;
 
-        auto dispatchTask = 
-          dispatch(
-            req.method,
-            reinterpret_cast<const uint8_t*>(req.payload.data()),
-            req.payload.size(),
-            respData);
-        faabric::rpc::Status status = co_await dispatchTask;
+            auto dispatchTask = dispatch(
+              req.method,
+              reinterpret_cast<const uint8_t*>(req.payload.data()),
+              req.payload.size(),
+              respData);
+            faabric::rpc::Status status = co_await dispatchTask;
 
-        const std::string statusMessage(status.message());
+            const std::string statusMessage(status.message());
 
-        int32_t sendStatus = __faasm_rpc_send_response(
-          req.requestId,
-          req.replyHost.c_str(),
-          req.replyPort,
-          status.code(),
-          respData.empty() ? nullptr : respData.data(),
-          static_cast<int32_t>(respData.size()),
-          statusMessage.empty() ? nullptr : statusMessage.c_str(),
-          static_cast<int32_t>(statusMessage.size()));
+            int32_t sendStatus = __faasm_rpc_send_response(
+              req.requestId,
+              req.replyHost.c_str(),
+              req.replyPort,
+              status.code(),
+              respData.empty() ? nullptr : respData.data(),
+              static_cast<int32_t>(respData.size()),
+              statusMessage.empty() ? nullptr : statusMessage.c_str(),
+              static_cast<int32_t>(statusMessage.size()));
 
-        if (sendStatus != Rpc_StatusCode::OK) {
-            printf("[RPC Server] Failed to send response for request %u: %d\n",
-                   req.requestId,
-                   sendStatus);
-        }
+            if (sendStatus != Rpc_StatusCode::OK) {
+                printf("[RPC Server] Failed to send response for %u: %d\n",
+                       req.requestId,
+                       sendStatus);
+            }
+        } // dispatchTask destroyed here — child frames dead before parking
+
+        co_await faabric::rpc::YieldToDriver{}; // unwind to driver
     }
 
     co_return;

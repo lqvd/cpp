@@ -1,4 +1,5 @@
 #include <faasrpc/coro_trampoline.h>
+#include <faasrpc/Driver.h>
 
 #include <coroutine>
 #include <cstdint>
@@ -14,6 +15,7 @@ void __faasm_rpc_coro_trampoline(int32_t frameOffset)
         static_cast<uintptr_t>(frameOffset));
     auto handle = std::coroutine_handle<>::from_address(framePtr);
     handle.resume();
+    faabric::rpc::runServerDriver();
 }
 
 } // extern "C"
