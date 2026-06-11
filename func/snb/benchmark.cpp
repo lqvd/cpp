@@ -1,3 +1,5 @@
+// ChatGPT helped write this file.
+
 #include <faasm/faasm.h>
 #include <faasm/time.h>
 
@@ -504,8 +506,6 @@ int main(int argc, char* argv[])
         usleep(1000);
     }
 
-    // Keep this if your Task<T> requires explicit destruction.
-    // If Task<T>'s destructor already destroys the coroutine handle, remove this.
     task.destroy();
 
     if (output.empty()) {
