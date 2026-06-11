@@ -35,9 +35,9 @@ class PostStorageServiceImpl final : public snb::PostStorageService::Service
             posts_.emplace(postId, req->post());
         }
 
-        fprintf(stderr, "[PostStorage] Stored post_id=%lld req_id=%lld\n",
-                        (long long)postId,
-                        (long long)req->req_id());
+        // fprintf(stderr, "[PostStorage] Stored post_id=%lld req_id=%lld\n",
+        //                 (long long)postId,
+        //                 (long long)req->req_id());
 
         co_return faabric::rpc::Status::OK();
     }
