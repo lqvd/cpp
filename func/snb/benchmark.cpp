@@ -13,13 +13,16 @@
 #include "postStorage/proto/post_storage.pb.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -112,6 +115,27 @@ std::string csvSafe(std::string s)
     return s;
 }
 
+void appendCsvHeader(std::ostringstream& out)
+{
+    out << "request_idx,batch_idx,slot_idx,concurrency,text_bytes,"
+        << "mention_count,url_count,user_count,seed,"
+        << "start_ns,end_ns,latency_ns,ok,status\n";
+}
+
+std::string makeErrorCsv(const std::string& message)
+{
+    std::ostringstream out;
+    appendCsvHeader(out);
+    out << "# error," << csvSafe(message) << "\n";
+    return out.str();
+}
+
+void setErrorOutput(const std::string& message)
+{
+    const std::string s = makeErrorCsv(message);
+    faasmSetOutput(s.c_str(), static_cast<long>(s.size()));
+}
+
 uint64_t mix64(uint64_t x)
 {
     x += 0x9e3779b97f4a7c15ULL;
@@ -154,8 +178,7 @@ std::string makeText(const Args& args, int requestIdx)
     }
 
     for (int i = 0; i < args.urlCount; i++) {
-        ss << "http://example.com/post/"
-           << requestIdx << "/" << i << " ";
+        ss << "http://example.com/post/" << requestIdx << "/" << i << " ";
     }
 
     std::string text = ss.str();
@@ -219,63 +242,7 @@ void appendCsvRow(std::ostringstream& out,
         << csvSafe(status) << "\n";
 }
 
-void setErrorOutput(const std::string& message)
-{
-    std::ostringstream out;
-    out << "request_idx,batch_idx,slot_idx,concurrency,text_bytes,"
-        << "mention_count,url_count,user_count,seed,"
-        << "start_ns,end_ns,latency_ns,ok,status\n";
-    out << "# error," << csvSafe(message) << "\n";
-
-    const std::string s = out.str();
-    faasmSetOutput(s.c_str(), static_cast<long>(s.size()));
-}
-
 } // namespace
-
-faabric::rpc::Task<void> runWarmup(
-  snb::ComposePostService::Stub& composeStub,
-  const Args& args)
-{
-    int issued = 0;
-
-    while (issued < args.warmupRequests) {
-        const int batchSize =
-          std::min(args.concurrency, args.warmupRequests - issued);
-
-        std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
-        std::vector<snb::ComposePostRequest> reqs(batchSize);
-
-        using ComposeCall = faabric::rpc::RpcCall<snb::Empty>;
-        std::vector<ComposeCall> calls;
-        calls.reserve(batchSize);
-
-        for (int i = 0; i < batchSize; i++) {
-            const int warmupIdx = issued + i;
-
-            // Use negative req_ids for warmup to keep them distinct from
-            // measured requests.
-            const int64_t reqId = -1 - static_cast<int64_t>(warmupIdx);
-
-            fillComposeRequest(reqs[i], args, warmupIdx, reqId);
-            calls.push_back(composeStub.AsyncComposePost(&ctxs[i], reqs[i]));
-        }
-
-        for (int i = 0; i < batchSize; i++) {
-            auto result = co_await calls[i];
-
-            if (!result.ok()) {
-                fprintf(stderr,
-                        "[WASM] Warmup request failed: %s\n",
-                        result.status().message().data());
-            }
-        }
-
-        issued += batchSize;
-    }
-
-    co_return;
-}
 
 faabric::rpc::Task<int64_t> getStoredPostCount(
   snb::PostStorageService::Stub& storageStub,
@@ -299,138 +266,180 @@ faabric::rpc::Task<void> runComposePostBenchmark(
   std::shared_ptr<faabric::rpc::Channel> composeChannel,
   std::shared_ptr<faabric::rpc::Channel> storageChannel,
   const Args& args,
-  std::string& output)
+  std::string& output,
+  std::atomic<bool>& done)
 {
-    snb::ComposePostService::Stub composeStub(composeChannel);
+    try {
+        snb::ComposePostService::Stub composeStub(composeChannel);
 
-    std::unique_ptr<snb::PostStorageService::Stub> storageStub;
-    if (args.verifyStorage) {
-        storageStub =
-          std::make_unique<snb::PostStorageService::Stub>(storageChannel);
-    }
-
-    // Warmup is deliberately not recorded in the CSV.
-    if (args.warmupRequests > 0) {
-        co_await runWarmup(composeStub, args);
-    }
-
-    int64_t initialStored = -1;
-    int64_t finalStored = -1;
-    std::string storageStatus = args.verifyStorage ? "unchecked" : "disabled";
-
-    if (args.verifyStorage) {
-        initialStored = co_await getStoredPostCount(*storageStub, storageStatus);
-    }
-
-    std::ostringstream csv;
-    csv << "request_idx,batch_idx,slot_idx,concurrency,text_bytes,"
-        << "mention_count,url_count,user_count,seed,"
-        << "start_ns,end_ns,latency_ns,ok,status\n";
-
-    int issued = 0;
-    int batchIdx = 0;
-    int successes = 0;
-    int failures = 0;
-
-    const double benchStartSec = faasm::getSecondsSinceEpoch();
-
-    while (issued < args.totalRequests) {
-        const int batchSize =
-          std::min(args.concurrency, args.totalRequests - issued);
-
-        std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
-        std::vector<snb::ComposePostRequest> reqs(batchSize);
-        std::vector<int64_t> startTimes(batchSize);
-        std::vector<int> requestIdxs(batchSize);
-
-        using ComposeCall = faabric::rpc::RpcCall<snb::Empty>;
-        std::vector<ComposeCall> calls;
-        calls.reserve(batchSize);
-
-        // Dispatch the whole batch before awaiting any response.
-        for (int i = 0; i < batchSize; i++) {
-            const int requestIdx = issued + i;
-            requestIdxs[i] = requestIdx;
-
-            // Measured requests use non-negative req_ids.
-            const int64_t reqId = static_cast<int64_t>(requestIdx);
-
-            fillComposeRequest(reqs[i], args, requestIdx, reqId);
-
-            startTimes[i] = relNsSince(benchStartSec);
-            calls.push_back(composeStub.AsyncComposePost(&ctxs[i], reqs[i]));
+        std::unique_ptr<snb::PostStorageService::Stub> storageStub;
+        if (args.verifyStorage) {
+            storageStub =
+              std::make_unique<snb::PostStorageService::Stub>(storageChannel);
         }
 
-        // Await in index order. This keeps up to `concurrency` RPCs outstanding.
-        for (int i = 0; i < batchSize; i++) {
-            auto result = co_await calls[i];
+        // Warmup is deliberately not recorded in the CSV.
+        int warmupIssued = 0;
 
-            const int64_t endNs = relNsSince(benchStartSec);
+        while (warmupIssued < args.warmupRequests) {
+            const int batchSize =
+              std::min(args.concurrency, args.warmupRequests - warmupIssued);
 
-            bool ok = result.ok();
-            std::string status = "OK";
+            std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
+            std::vector<snb::ComposePostRequest> reqs(batchSize);
 
-            if (!ok) {
-                status = std::string(result.status().message());
-                failures++;
-            } else {
-                successes++;
+            using ComposeCall = faabric::rpc::RpcCall<snb::Empty>;
+            std::vector<ComposeCall> calls;
+            calls.reserve(batchSize);
+
+            for (int i = 0; i < batchSize; i++) {
+                const int warmupIdx = warmupIssued + i;
+                const int64_t reqId = -1 - static_cast<int64_t>(warmupIdx);
+
+                fillComposeRequest(reqs[i], args, warmupIdx, reqId);
+                calls.push_back(
+                  composeStub.AsyncComposePost(&ctxs[i], reqs[i]));
             }
 
-            appendCsvRow(csv,
-                         requestIdxs[i],
-                         batchIdx,
-                         i,
-                         args.concurrency,
-                         args.textBytes,
-                         args.mentionCount,
-                         args.urlCount,
-                         args.userCount,
-                         args.seed,
-                         startTimes[i],
-                         endNs,
-                         ok,
-                         status);
+            for (int i = 0; i < batchSize; i++) {
+                auto result = co_await calls[i];
+
+                if (!result.ok()) {
+                    fprintf(stderr,
+                            "[WASM] Warmup request failed: %s\n",
+                            result.status().message().data());
+                }
+            }
+
+            warmupIssued += batchSize;
         }
 
-        issued += batchSize;
-        batchIdx++;
-    }
+        int64_t initialStored = -1;
+        int64_t finalStored = -1;
+        std::string storageStatus =
+          args.verifyStorage ? "unchecked" : "disabled";
 
-    if (args.verifyStorage) {
-        finalStored = co_await getStoredPostCount(*storageStub, storageStatus);
+        if (args.verifyStorage) {
+            initialStored =
+              co_await getStoredPostCount(*storageStub, storageStatus);
+        }
 
-        if (initialStored >= 0 && finalStored >= 0) {
-            const int64_t delta = finalStored - initialStored;
+        std::ostringstream csv;
+        appendCsvHeader(csv);
 
-            if (delta != successes) {
-                storageStatus = "stored_count_delta_mismatch";
+        int issued = 0;
+        int batchIdx = 0;
+        int successes = 0;
+        int failures = 0;
+
+        const double benchStartSec = faasm::getSecondsSinceEpoch();
+
+        while (issued < args.totalRequests) {
+            const int batchSize =
+              std::min(args.concurrency, args.totalRequests - issued);
+
+            std::vector<faabric::rpc::ClientContext> ctxs(batchSize);
+            std::vector<snb::ComposePostRequest> reqs(batchSize);
+            std::vector<int64_t> startTimes(batchSize);
+            std::vector<int> requestIdxs(batchSize);
+
+            using ComposeCall = faabric::rpc::RpcCall<snb::Empty>;
+            std::vector<ComposeCall> calls;
+            calls.reserve(batchSize);
+
+            // Dispatch the whole batch before awaiting any response.
+            for (int i = 0; i < batchSize; i++) {
+                const int requestIdx = issued + i;
+                requestIdxs[i] = requestIdx;
+
+                const int64_t reqId = static_cast<int64_t>(requestIdx);
+
+                fillComposeRequest(reqs[i], args, requestIdx, reqId);
+
+                startTimes[i] = relNsSince(benchStartSec);
+                calls.push_back(
+                  composeStub.AsyncComposePost(&ctxs[i], reqs[i]));
+            }
+
+            // Await in index order. This keeps up to `concurrency` RPCs
+            // outstanding.
+            for (int i = 0; i < batchSize; i++) {
+                auto result = co_await calls[i];
+
+                const int64_t endNs = relNsSince(benchStartSec);
+
+                bool ok = result.ok();
+                std::string status = "OK";
+
+                if (!ok) {
+                    status = std::string(result.status().message());
+                    failures++;
+                } else {
+                    successes++;
+                }
+
+                appendCsvRow(csv,
+                             requestIdxs[i],
+                             batchIdx,
+                             i,
+                             args.concurrency,
+                             args.textBytes,
+                             args.mentionCount,
+                             args.urlCount,
+                             args.userCount,
+                             args.seed,
+                             startTimes[i],
+                             endNs,
+                             ok,
+                             status);
+            }
+
+            issued += batchSize;
+            batchIdx++;
+        }
+
+        if (args.verifyStorage) {
+            finalStored =
+              co_await getStoredPostCount(*storageStub, storageStatus);
+
+            if (initialStored >= 0 && finalStored >= 0) {
+                const int64_t delta = finalStored - initialStored;
+
+                if (delta != successes) {
+                    storageStatus = "stored_count_delta_mismatch";
+                }
             }
         }
+
+        csv << "# summary,total_requests=" << args.totalRequests
+            << ",concurrency=" << args.concurrency
+            << ",text_bytes=" << args.textBytes
+            << ",mention_count=" << args.mentionCount
+            << ",url_count=" << args.urlCount
+            << ",user_count=" << args.userCount
+            << ",seed=" << args.seed
+            << ",warmup_requests=" << args.warmupRequests
+            << ",method=compose_post"
+            << ",successes=" << successes
+            << ",failures=" << failures
+            << ",verify_storage=" << (args.verifyStorage ? 1 : 0)
+            << ",initial_stored=" << initialStored
+            << ",final_stored=" << finalStored
+            << ",storage_delta="
+            << ((initialStored >= 0 && finalStored >= 0)
+                  ? finalStored - initialStored
+                  : -1)
+            << ",storage_status=" << csvSafe(storageStatus)
+            << "\n";
+
+        output = csv.str();
+    } catch (const std::exception& e) {
+        output = makeErrorCsv(std::string("benchmark exception: ") + e.what());
+    } catch (...) {
+        output = makeErrorCsv("benchmark unknown exception");
     }
 
-    csv << "# summary,total_requests=" << args.totalRequests
-        << ",concurrency=" << args.concurrency
-        << ",text_bytes=" << args.textBytes
-        << ",mention_count=" << args.mentionCount
-        << ",url_count=" << args.urlCount
-        << ",user_count=" << args.userCount
-        << ",seed=" << args.seed
-        << ",warmup_requests=" << args.warmupRequests
-        << ",method=compose_post"
-        << ",successes=" << successes
-        << ",failures=" << failures
-        << ",verify_storage=" << (args.verifyStorage ? 1 : 0)
-        << ",initial_stored=" << initialStored
-        << ",final_stored=" << finalStored
-        << ",storage_delta="
-        << ((initialStored >= 0 && finalStored >= 0)
-              ? finalStored - initialStored
-              : -1)
-        << ",storage_status=" << csvSafe(storageStatus)
-        << "\n";
-
-    output = csv.str();
+    done.store(true, std::memory_order_release);
     co_return;
 }
 
@@ -450,6 +459,7 @@ int main(int argc, char* argv[])
            args.seed,
            args.warmupRequests,
            args.verifyStorage ? 1 : 0);
+    fflush(stdout);
 
     std::shared_ptr<faabric::rpc::Channel> composeChannel;
     faabric::rpc::Status status =
@@ -466,8 +476,9 @@ int main(int argc, char* argv[])
     std::shared_ptr<faabric::rpc::Channel> storageChannel;
 
     if (args.verifyStorage) {
-        status = faabric::rpc::CreateChannel(snb::PostStorageService::ServiceUri,
-                                             &storageChannel);
+        status = faabric::rpc::CreateChannel(
+          snb::PostStorageService::ServiceUri,
+          &storageChannel);
 
         if (!status.ok()) {
             std::string msg = "post-storage channel failed: ";
@@ -478,18 +489,35 @@ int main(int argc, char* argv[])
     }
 
     std::string output;
+    std::atomic<bool> done{ false };
 
-    faabric::rpc::Task<void>* task = new faabric::rpc::Task<void>(
-      runComposePostBenchmark(composeChannel, storageChannel, args, output));
+    auto task = runComposePostBenchmark(
+      composeChannel,
+      storageChannel,
+      args,
+      output,
+      done);
 
-    task->resume();
-    task->destroy();
-    delete task;
+    task.resume();
+
+    while (!done.load(std::memory_order_acquire)) {
+        usleep(1000);
+    }
+
+    // Keep this if your Task<T> requires explicit destruction.
+    // If Task<T>'s destructor already destroys the coroutine handle, remove this.
+    task.destroy();
+
+    if (output.empty()) {
+        setErrorOutput("benchmark completed but produced empty output");
+        return 1;
+    }
 
     faasmSetOutput(output.c_str(), static_cast<long>(output.size()));
 
     printf("[WASM] SocialNetworkBench benchmark finished. output_size=%zu\n",
            output.size());
+    fflush(stdout);
 
     return 0;
 }
