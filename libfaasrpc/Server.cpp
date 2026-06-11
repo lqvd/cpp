@@ -3,7 +3,6 @@
 #include <faabric/rpc/rpc.h>
 #include <faasrpc/RpcReceive.h>
 #include <faasrpc/Task.h>
-#include <faasrpc/Yield.h>
 
 #include <coroutine>
 #include <cstdio>
