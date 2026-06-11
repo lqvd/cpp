@@ -10,3 +10,7 @@ __faasm_rpc_wait_migratable
 __faasm_rpc_get_response
 __faasm_rpc_send_response
 __faasm_rpc_get_request
+
+
+__faasm_rpc_wait
+__faasm_rpc_get_request_nomig

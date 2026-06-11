@@ -1,5 +1,9 @@
 set(FAASM_USER rpc)
 
+option(FAASRPC_ENABLE_MIGRATION
+       "Enable migration-aware RPC paths"
+       ON)
+
 # --------------
 # Protobuf / Faabric stub generation
 # --------------
@@ -124,6 +128,10 @@ function(rpc_func exec_name source_file)
         rpc
         rpc_generated_stubs
         rpc_generated_pb
+    )
+
+    target_compile_definitions(${exec_name} PRIVATE
+        FAASRPC_ENABLE_MIGRATION=$<BOOL:${FAASRPC_ENABLE_MIGRATION}>
     )
 
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")

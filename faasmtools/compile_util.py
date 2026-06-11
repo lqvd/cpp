@@ -10,7 +10,13 @@ from subprocess import run
 
 
 def wasm_cmake(
-    src_dir, build_dir, target, clean=False, debug=False, is_threads=False
+    src_dir,
+    build_dir,
+    target,
+    clean=False,
+    debug=False,
+    is_threads=False,
+    cmake_args=None,
 ):
     cmake_build_type = "Debug" if debug else "Release"
 
@@ -24,8 +30,13 @@ def wasm_cmake(
         "-GNinja",
         "-DCMAKE_TOOLCHAIN_FILE={}".format(CMAKE_TOOLCHAIN_FILE),
         "-DCMAKE_BUILD_TYPE={}".format(cmake_build_type),
-        src_dir,
     ]
+
+    if cmake_args:
+        build_cmd.extend(cmake_args)
+
+    build_cmd.append(src_dir)
+
     build_cmd = " ".join(build_cmd)
     print(build_cmd)
 

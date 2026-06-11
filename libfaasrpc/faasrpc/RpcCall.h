@@ -11,6 +11,10 @@
 #include <string>
 #include <utility>
 
+#ifndef FAASRPC_ENABLE_MIGRATION
+#define FAASRPC_ENABLE_MIGRATION 1
+#endif
+
 namespace faabric::rpc {
 
 // `RpcCall` is a Faasm-specific awaitable representing one in-flight unary RPC.
@@ -79,11 +83,14 @@ class RpcCall
         int32_t frameOffset = static_cast<int32_t>(
           reinterpret_cast<uintptr_t>(h.address()));
 
+#ifdef FAASRPC_ENABLE_MIGRATION
         waitStatus = __faasm_rpc_wait_migratable(
           requestId,
           faabric::rpc::coro_trampoline_index(),
           frameOffset);
-
+#else
+        waitStatus = __faasm_rpc_wait(requestId);
+#endif
         return false;
     }
 

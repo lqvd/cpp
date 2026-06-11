@@ -6,6 +6,10 @@
 #include <coroutine>
 #include <string>
 
+#ifndef FAASRPC_ENABLE_MIGRATION
+#define FAASRPC_ENABLE_MIGRATION 1
+#endif
+
 namespace faabric::rpc {
 
 struct IncomingRequest {
@@ -74,6 +78,7 @@ class RpcReceive
         int32_t replyHostOffset = 0;
         int32_t replyHostLen = 0;
 
+#ifdef FAASRPC_ENABLE_MIGRATION
         status_ = __faasm_rpc_get_request(
           faabric::rpc::coro_trampoline_index(),
           frameOffset,
@@ -85,6 +90,17 @@ class RpcReceive
           &replyHostOffset,
           &replyHostLen,
           &result_.replyPort);
+#else
+        status_ = __faasm_rpc_get_request_nomig(
+          &result_.requestId,
+          &methodOffset,
+          &methodLen,
+          &payloadOffset,
+          &payloadLen,
+          &replyHostOffset,
+          &replyHostLen,
+          &result_.replyPort);
+#endif
 
         if (status_ == Rpc_StatusCode::OK) {
             result_.method = copyGuestString(methodOffset, methodLen);

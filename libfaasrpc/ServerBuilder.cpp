@@ -1,5 +1,4 @@
 #include <faasrpc/ServerBuilder.h>
-#include <faasrpc/Driver.h>
 
 #include <stdexcept>
 #include <utility>
@@ -33,8 +32,7 @@ void ServerBuilder::buildAndStart()
 {
     auto server = build();
     auto task = server->serveForever();
-    faabric::rpc::setServerRoot(task.get_handle());
-    faabric::rpc::runServerDriver();
+    task.resume();
 }
 
 } // namespace faabric::rpc

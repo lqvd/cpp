@@ -1,5 +1,9 @@
 set(FAASM_USER snb)
 
+option(FAASRPC_ENABLE_MIGRATION
+       "Enable migration-aware RPC paths"
+       ON)
+
 # --------------
 # Source layout
 # --------------
@@ -168,6 +172,10 @@ function(snb_configure_func exec_name)
     target_include_directories(${exec_name} PRIVATE
         "${SNB_ROOT}"
         "${SNB_GENERATED_DIR}"
+    )
+
+    target_compile_definitions(${exec_name} PRIVATE
+        FAASRPC_ENABLE_MIGRATION=$<BOOL:${FAASRPC_ENABLE_MIGRATION}>
     )
 
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")

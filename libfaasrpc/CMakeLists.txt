@@ -8,7 +8,6 @@ set(PUBLIC_HEADERS
     faasrpc/Channel.h
     faasrpc/ClientContext.h
     faasrpc/coro_trampoline.h
-    faasrpc/Driver.h
     faasrpc/faasrpc.h
     faasrpc/MigrationCheckpoint.h
     faasrpc/RpcCall.h
@@ -18,13 +17,11 @@ set(PUBLIC_HEADERS
     faasrpc/Service.h
     faasrpc/Status.h
     faasrpc/Task.h
-    faasrpc/Yield.h
 )
 
 set(LIB_FILES
     Channel.cpp
     coro_trampoline.cpp
-    Driver.cpp
     faasrpc.cpp
     Server.cpp
     ServerBuilder.cpp

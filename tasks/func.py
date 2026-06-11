@@ -42,7 +42,7 @@ def _copy_built_function(user, func):
     wasm_copy_upload(user, func, src_file)
 
 @task(default=True, name="compile")
-def compile(ctx, user, func, clean=False, debug=False, native=False):
+def compile(ctx, user, func, clean=False, debug=False, native=False, migration=True):
     """
     Compile a function
     """
@@ -57,7 +57,10 @@ def compile(ctx, user, func, clean=False, debug=False, native=False):
         build_cmd = " ".join(build_cmd)
         print(build_cmd)
         run(
-            "cmake -GNinja {}".format(FUNC_DIR),
+            "cmake -GNinja {} -DFAASRPC_ENABLE_MIGRATION={}".format(
+                FUNC_DIR,
+                "ON" if migration else "OFF"
+            ),
             check=True,
             shell=True,
             cwd=NATIVE_FUNC_BUILD_DIR,
@@ -78,6 +81,11 @@ def compile(ctx, user, func, clean=False, debug=False, native=False):
             clean,
             debug,
             _is_threaded_func(user, func),
+            cmake_args=[
+                "-DFAASRPC_ENABLE_MIGRATION={}".format(
+                    "ON" if migration else "OFF"
+                )
+            ],
         )
 
         # Copy into place
@@ -133,14 +141,21 @@ def invoke(ctx, user, func, input_data=None, mpi=None, graph=False):
 
 
 @task
-def update(ctx, user, func, clean=False, debug=False, native=False):
+def update(ctx, user, func, clean=False, debug=False, native=False, migration=True):
     """
     Combined compile, upload, flush
     """
-    compile(ctx, user, func, clean=clean)
+    compile(
+        ctx,
+        user,
+        func,
+        clean=clean,
+        debug=debug,
+        native=native,
+        migration=migration,
+    )
 
     upload(ctx, user, func)
-
     flush(ctx)
 
 
@@ -151,9 +166,8 @@ def flush(ctx):
     """
     flush_workers()
 
-
 @task
-def user(ctx, user, clean=False, debug=False):
+def user(ctx, user, clean=False, debug=False, migration=True):
     """
     Compile all functions belonging to the given user
     """
@@ -166,15 +180,19 @@ def user(ctx, user, clean=False, debug=False):
         clean,
         debug,
         _is_threaded_func(user, ""),
+        cmake_args=[
+            "-DFAASRPC_ENABLE_MIGRATION={}".format(
+                "ON" if migration else "OFF"
+            )
+        ],
     )
 
     funcs = _get_all_user_funcs(user)
     for f in funcs:
         _copy_built_function(user, f)
 
-
 @task
-def local(ctx, clean=False, debug=False):
+def local(ctx, clean=False, debug=False, migration=True):
     """
     Compile all functions used in the tests
     """
@@ -190,6 +208,6 @@ def local(ctx, clean=False, debug=False):
 
     # Threaded users
     user(ctx, "omp", clean, debug)
-    user(ctx, "snb", clean, debug)
-    user(ctx, "rpc", clean, debug)
+    user(ctx, "snb", clean, debug, migration)
+    user(ctx, "rpc", clean, debug, migration)
     user(ctx, "threads", clean, debug)
