@@ -25,7 +25,6 @@ endif()
 # Protobuf / Faabric stub generation
 # --------------
 set(SNB_PROTOS
-    "${SNB_ROOT}/benchmark.proto" 
     "${SNB_ROOT}/common/social_types.proto"
 
     "${SNB_ROOT}/composePost/proto/compose_post.proto"
