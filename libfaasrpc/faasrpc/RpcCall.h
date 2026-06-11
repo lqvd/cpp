@@ -115,8 +115,6 @@ class RpcCall
         int32_t errorMsgOffset = 0;
         int32_t errorMsgLen = 0;
 
-        printf("[RpcCall] consuming %u\n", requestId);
-
         int32_t statusCode = __faasm_rpc_get_response(
           requestId,
           &respOffset,
@@ -132,10 +130,6 @@ class RpcCall
                   reinterpret_cast<const char*>(errorMsgOffset),
                   static_cast<size_t>(errorMsgLen));
             }
-
-            printf("[RpcCall] get_response failed status=%d msg='%s'\n",
-                   statusCode,
-                   errorMessage.c_str());
 
             return StatusOr<T>{ Status{ statusCode, std::move(errorMessage) } };
         }
