@@ -24,12 +24,11 @@ class RpcReceive
         return false;
     }
 
-    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)
+    bool await_suspend(std::coroutine_handle<> h)
     {
         handle_ = h.address();
         fetch(h);
-        // Symmetric transfer...
-        return h;
+        return false;
     }
 
     std::optional<IncomingRequest> await_resume()

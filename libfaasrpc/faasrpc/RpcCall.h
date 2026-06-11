@@ -70,13 +70,11 @@ class RpcCall
         return __faasm_rpc_test_response(requestId) != 0;
     }
 
-    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)
+    bool await_suspend(std::coroutine_handle<> h)
     {
         if (immediateStatus.has_value()) {
-            return h;
+            return false;
         }
-
-        printf("[RpcCall] suspended %u\n", requestId);
 
         int32_t frameOffset = static_cast<int32_t>(
           reinterpret_cast<uintptr_t>(h.address()));
@@ -86,7 +84,7 @@ class RpcCall
           faabric::rpc::coro_trampoline_index(),
           frameOffset);
 
-        return h;
+        return false;
     }
 
     StatusOr<T> await_resume()
@@ -100,8 +98,6 @@ class RpcCall
                 Status{ waitStatus, "RPC wait_migratable failed" }
             };
         }
-
-        printf("[RpcCall] resuming %u\n", requestId);
 
         while (__faasm_rpc_test_response(requestId) == 0) {
             // Defensive. Normally wait_migratable only returns when ready.
