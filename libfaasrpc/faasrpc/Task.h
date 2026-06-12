@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <coroutine>
 #include <exception>
 #include <optional>
@@ -27,6 +28,7 @@ class [[nodiscard]] Task {
         std::optional<T> value;
         std::exception_ptr exception;
         std::coroutine_handle<> continuation = std::noop_coroutine();
+        std::atomic<bool> ready = false;
 
         Task get_return_object()
         {
@@ -48,12 +50,18 @@ class [[nodiscard]] Task {
                     return false;
                 }
 
-                std::coroutine_handle<> await_suspend(
+                void await_suspend(
                   std::coroutine_handle<promise_type> h) noexcept
                 {
-                    return std::exchange(
-                      h.promise().continuation,
-                      std::noop_coroutine());
+                    auto& promise = h.promise();
+
+                    if (promise.ready.exchange(true, std::memory_order_acq_rel)) {
+                        auto continuation = std::exchange(
+                        promise.continuation,
+                        std::noop_coroutine());
+
+                        continuation.resume();
+                    }
                 }
 
                 void await_resume() noexcept {}
@@ -111,11 +119,14 @@ class [[nodiscard]] Task {
             return !coroutine || coroutine.done();
         }
 
-        std::coroutine_handle<> await_suspend(
-          std::coroutine_handle<> awaitingCoroutine) noexcept
+        bool await_suspend(std::coroutine_handle<> awaitingCoroutine) noexcept
         {
-            coroutine.promise().continuation = awaitingCoroutine;
-            return coroutine;
+            auto& promise = coroutine.promise();
+            promise.continuation = awaitingCoroutine;
+
+            coroutine.resume();
+
+            return !promise.ready.exchange(true, std::memory_order_acq_rel);
         }
 
         handle_type coroutine = nullptr;
@@ -254,6 +265,7 @@ class [[nodiscard]] Task<void> {
     struct promise_type {
         std::exception_ptr exception;
         std::coroutine_handle<> continuation = std::noop_coroutine();
+        std::atomic<bool> ready = false;
 
         Task get_return_object()
         {
@@ -269,12 +281,18 @@ class [[nodiscard]] Task<void> {
             struct FinalAwaiter {
                 bool await_ready() noexcept { return false; }
 
-                std::coroutine_handle<> await_suspend(
+                void await_suspend(
                   std::coroutine_handle<promise_type> h) noexcept
                 {
-                    return std::exchange(
-                      h.promise().continuation,
-                      std::noop_coroutine());
+                    auto& promise = h.promise();
+
+                    if (promise.ready.exchange(true, std::memory_order_acq_rel)) {
+                        auto continuation = std::exchange(
+                        promise.continuation,
+                        std::noop_coroutine());
+
+                        continuation.resume();
+                    }
                 }
 
                 void await_resume() noexcept {}
@@ -309,11 +327,14 @@ class [[nodiscard]] Task<void> {
             return !coroutine || coroutine.done();
         }
 
-        std::coroutine_handle<> await_suspend(
-          std::coroutine_handle<> awaitingCoroutine) noexcept
+        bool await_suspend(std::coroutine_handle<> awaitingCoroutine) noexcept
         {
-            coroutine.promise().continuation = awaitingCoroutine;
-            return coroutine;
+            auto& promise = coroutine.promise();
+            promise.continuation = awaitingCoroutine;
+
+            coroutine.resume();
+
+            return !promise.ready.exchange(true, std::memory_order_acq_rel);
         }
 
         handle_type coroutine = nullptr;
