@@ -9,104 +9,155 @@
 
 namespace faabric::rpc {
 
-// Task is the wrapper/promise. It is a generic class as we integrate Faasm
-// migration code into the coroutine via the Awaitable `RpcCall` rather than
-// `Task`. The protoc plugin exposes `RpcCall` objects to the user rather than
-// the `Task`. This is therefore more of an internal tool used alongside the
-// plugin.
-//
-// Note the Task<void> specialisation. One could also use Task<std::monotype>
-// and it would work with the Task<T> version, but they should be functionally
-// the same, with Task<void> probably making more sense.
-//
-// Based on `libcoro::Task<T>`. See
-// https://github.com/jbaldwin/libcoro/blob/main/include/coro/task.hpp.
+template <typename T>
+class Task;
+
+namespace detail {
+
+class TaskPromiseBase
+{
+    friend struct FinalAwaiter;
+
+    struct FinalAwaiter {
+        bool await_ready() const noexcept
+        {
+            return false;
+        }
+
+        template <typename Promise>
+        void await_suspend(std::coroutine_handle<Promise> h) noexcept
+        {
+            auto& promise = h.promise();
+
+            if (promise.state.exchange(true, std::memory_order_acq_rel)) {
+                auto continuation = std::exchange(
+                    promise.continuation,
+                    std::noop_coroutine());
+
+                continuation.resume();
+            }
+        }
+
+        void await_resume() noexcept {}
+    };
+
+  public:
+    TaskPromiseBase() noexcept = default;
+
+    std::suspend_always initial_suspend() noexcept
+    {
+        return {};
+    }
+
+    FinalAwaiter final_suspend() noexcept
+    {
+        return {};
+    }
+
+    bool trySetContinuation(std::coroutine_handle<> awaitingCoroutine) noexcept
+    {
+        continuation = awaitingCoroutine;
+        return !state.exchange(true, std::memory_order_acq_rel);
+    }
+
+  private:
+    template <typename>
+    friend class TaskPromise;
+
+    std::coroutine_handle<> continuation = std::noop_coroutine();
+    std::atomic<bool> state = false;
+};
+
+template <typename T>
+class TaskPromise final : public TaskPromiseBase
+{
+  public:
+    Task<T> get_return_object() noexcept;
+
+    void return_value(T v)
+    {
+        value = std::move(v);
+    }
+
+    void unhandled_exception()
+    {
+        exception = std::current_exception();
+    }
+
+    T& result() &
+    {
+        if (exception) {
+            std::rethrow_exception(exception);
+        }
+
+        if (!value.has_value()) {
+            throw std::runtime_error("Task completed without value");
+        }
+
+        return *value;
+    }
+
+    const T& result() const&
+    {
+        if (exception) {
+            std::rethrow_exception(exception);
+        }
+
+        if (!value.has_value()) {
+            throw std::runtime_error("Task completed without value");
+        }
+
+        return *value;
+    }
+
+    T&& result() &&
+    {
+        if (exception) {
+            std::rethrow_exception(exception);
+        }
+
+        if (!value.has_value()) {
+            throw std::runtime_error("Task completed without value");
+        }
+
+        return std::move(*value);
+    }
+
+  private:
+    std::optional<T> value;
+    std::exception_ptr exception;
+};
+
+template <>
+class TaskPromise<void> final : public TaskPromiseBase
+{
+  public:
+    Task<void> get_return_object() noexcept;
+
+    void return_void() noexcept {}
+
+    void unhandled_exception()
+    {
+        exception = std::current_exception();
+    }
+
+    void result()
+    {
+        if (exception) {
+            std::rethrow_exception(exception);
+        }
+    }
+
+  private:
+    std::exception_ptr exception;
+};
+
+} // namespace detail
+
 template <typename T>
 class [[nodiscard]] Task {
   public:
-    struct promise_type {
-        std::optional<T> value;
-        std::exception_ptr exception;
-        std::coroutine_handle<> continuation = std::noop_coroutine();
-        std::atomic<bool> ready = false;
-
-        Task get_return_object()
-        {
-            return Task{
-                std::coroutine_handle<promise_type>::from_promise(*this)
-            };
-        }
-
-        std::suspend_always initial_suspend() noexcept
-        {
-            return {};
-        }
-
-        auto final_suspend() noexcept
-        {
-            struct FinalAwaiter {
-                bool await_ready() noexcept
-                {
-                    return false;
-                }
-
-                void await_suspend(
-                  std::coroutine_handle<promise_type> h) noexcept
-                {
-                    auto& promise = h.promise();
-
-                    if (promise.ready.exchange(true, std::memory_order_acq_rel)) {
-                        auto continuation = std::exchange(
-                        promise.continuation,
-                        std::noop_coroutine());
-
-                        continuation.resume();
-                    }
-                }
-
-                void await_resume() noexcept {}
-            };
-
-            return FinalAwaiter{};
-        }
-
-        void return_value(T v)
-        {
-            value = std::move(v);
-        }
-
-        void unhandled_exception()
-        {
-            exception = std::current_exception();
-        }
-
-        T& result() &
-        {
-            if (exception) {
-                std::rethrow_exception(exception);
-            }
-
-            if (!value.has_value()) {
-                throw std::runtime_error("Task completed without value");
-            }
-
-            return *value;
-        }
-
-        T&& result() &&
-        {
-            if (exception) {
-                std::rethrow_exception(exception);
-            }
-
-            if (!value.has_value()) {
-                throw std::runtime_error("Task completed without value");
-            }
-
-            return std::move(*value);
-        }
-    };
-
+    using promise_type = detail::TaskPromise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
 
     struct awaitable_base {
@@ -121,12 +172,17 @@ class [[nodiscard]] Task {
 
         bool await_suspend(std::coroutine_handle<> awaitingCoroutine) noexcept
         {
-            auto& promise = coroutine.promise();
-            promise.continuation = awaitingCoroutine;
-
+            // cppcoro-style non-symmetric-transfer path:
+            //
+            // Start the child first. If it completes synchronously, final_suspend()
+            // marks the task ready but does not resume the parent. We then observe
+            // that state and return false, so the parent continues after this
+            // resume call has unwound.
+            //
+            // If the child suspends, trySetContinuation() records the parent and
+            // returns true, so the parent suspends and will be resumed later.
             coroutine.resume();
-
-            return !promise.ready.exchange(true, std::memory_order_acq_rel);
+            return coroutine.promise().trySetContinuation(awaitingCoroutine);
         }
 
         handle_type coroutine = nullptr;
@@ -206,17 +262,7 @@ class [[nodiscard]] Task {
 
             const T& await_resume()
             {
-                auto& promise = this->coroutine.promise();
-
-                if (promise.exception) {
-                    std::rethrow_exception(promise.exception);
-                }
-
-                if (!promise.value.has_value()) {
-                    throw std::runtime_error("Task completed without value");
-                }
-
-                return *promise.value;
+                return this->coroutine.promise().result();
             }
         };
 
@@ -231,9 +277,15 @@ class [[nodiscard]] Task {
             T await_resume()
             {
                 auto h = std::exchange(this->coroutine, nullptr);
-                T result = std::move(h.promise()).result();
-                h.destroy();
-                return result;
+
+                try {
+                    T result = std::move(h.promise()).result();
+                    h.destroy();
+                    return result;
+                } catch (...) {
+                    h.destroy();
+                    throw;
+                }
             }
         };
 
@@ -259,65 +311,10 @@ class [[nodiscard]] Task {
     handle_type handle = nullptr;
 };
 
-// Task<void> specialisation — std::optional<void> is not valid so we
-// need a separate promise_type that uses return_void() instead of
-// return_value(T) and stores no value.
 template <>
 class [[nodiscard]] Task<void> {
   public:
-    struct promise_type {
-        std::exception_ptr exception;
-        std::coroutine_handle<> continuation = std::noop_coroutine();
-        std::atomic<bool> ready = false;
-
-        Task get_return_object()
-        {
-            return Task{
-                std::coroutine_handle<promise_type>::from_promise(*this)
-            };
-        }
-
-        std::suspend_always initial_suspend() noexcept { return {}; }
-
-        auto final_suspend() noexcept
-        {
-            struct FinalAwaiter {
-                bool await_ready() noexcept { return false; }
-
-                void await_suspend(
-                  std::coroutine_handle<promise_type> h) noexcept
-                {
-                    auto& promise = h.promise();
-
-                    if (promise.ready.exchange(true, std::memory_order_acq_rel)) {
-                        auto continuation = std::exchange(
-                        promise.continuation,
-                        std::noop_coroutine());
-
-                        continuation.resume();
-                    }
-                }
-
-                void await_resume() noexcept {}
-            };
-            return FinalAwaiter{};
-        }
-
-        void return_void() {}
-
-        void unhandled_exception()
-        {
-            exception = std::current_exception();
-        }
-
-        void result()
-        {
-            if (exception) {
-                std::rethrow_exception(exception);
-            }
-        }
-    };
-
+    using promise_type = detail::TaskPromise<void>;
     using handle_type = std::coroutine_handle<promise_type>;
 
     struct awaitable_base {
@@ -332,12 +329,8 @@ class [[nodiscard]] Task<void> {
 
         bool await_suspend(std::coroutine_handle<> awaitingCoroutine) noexcept
         {
-            auto& promise = coroutine.promise();
-            promise.continuation = awaitingCoroutine;
-
             coroutine.resume();
-
-            return !promise.ready.exchange(true, std::memory_order_acq_rel);
+            return coroutine.promise().trySetContinuation(awaitingCoroutine);
         }
 
         handle_type coroutine = nullptr;
@@ -362,10 +355,14 @@ class [[nodiscard]] Task<void> {
             destroy();
             handle = std::exchange(other.handle, nullptr);
         }
+
         return *this;
     }
 
-    ~Task() { destroy(); }
+    ~Task()
+    {
+        destroy();
+    }
 
     bool is_ready() const noexcept
     {
@@ -377,6 +374,7 @@ class [[nodiscard]] Task<void> {
         if (handle && !handle.done()) {
             handle.resume();
         }
+
         return handle && !handle.done();
     }
 
@@ -387,6 +385,7 @@ class [[nodiscard]] Task<void> {
             handle = nullptr;
             return true;
         }
+
         return false;
     }
 
@@ -394,11 +393,13 @@ class [[nodiscard]] Task<void> {
     {
         struct awaitable : awaitable_base {
             using awaitable_base::awaitable_base;
+
             void await_resume()
             {
                 this->coroutine.promise().result();
             }
         };
+
         return awaitable{ handle };
     }
 
@@ -406,11 +407,13 @@ class [[nodiscard]] Task<void> {
     {
         struct awaitable : awaitable_base {
             using awaitable_base::awaitable_base;
+
             void await_resume()
             {
                 this->coroutine.promise().result();
             }
         };
+
         return awaitable{ handle };
     }
 
@@ -418,22 +421,60 @@ class [[nodiscard]] Task<void> {
     {
         struct awaitable : awaitable_base {
             using awaitable_base::awaitable_base;
+
             void await_resume()
             {
                 auto h = std::exchange(this->coroutine, nullptr);
-                h.promise().result();
-                h.destroy();
+
+                try {
+                    h.promise().result();
+                    h.destroy();
+                } catch (...) {
+                    h.destroy();
+                    throw;
+                }
             }
         };
+
         return awaitable{ std::exchange(handle, nullptr) };
     }
 
-    promise_type& promise() & { return handle.promise(); }
-    const promise_type& promise() const& { return handle.promise(); }
-    handle_type get_handle() const noexcept { return handle; }
+    promise_type& promise() &
+    {
+        return handle.promise();
+    }
+
+    const promise_type& promise() const&
+    {
+        return handle.promise();
+    }
+
+    handle_type get_handle() const noexcept
+    {
+        return handle;
+    }
 
   private:
     handle_type handle = nullptr;
 };
+
+namespace detail {
+
+template <typename T>
+Task<T> TaskPromise<T>::get_return_object() noexcept
+{
+    return Task<T>{
+        std::coroutine_handle<TaskPromise<T>>::from_promise(*this)
+    };
+}
+
+inline Task<void> TaskPromise<void>::get_return_object() noexcept
+{
+    return Task<void>{
+        std::coroutine_handle<TaskPromise<void>>::from_promise(*this)
+    };
+}
+
+} // namespace detail
 
 } // namespace faabric::rpc
