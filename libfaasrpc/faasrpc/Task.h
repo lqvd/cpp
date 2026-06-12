@@ -230,7 +230,10 @@ class [[nodiscard]] Task {
 
             T await_resume()
             {
-                return std::move(this->coroutine.promise()).result();
+                auto h = std::exchange(this->coroutine, nullptr);
+                T result = std::move(h.promise()).result();
+                h.destroy();
+                return result;
             }
         };
 
@@ -417,7 +420,9 @@ class [[nodiscard]] Task<void> {
             using awaitable_base::awaitable_base;
             void await_resume()
             {
-                this->coroutine.promise().result();
+                auto h = std::exchange(this->coroutine, nullptr);
+                h.promise().result();
+                h.destroy();
             }
         };
         return awaitable{ std::exchange(handle, nullptr) };
