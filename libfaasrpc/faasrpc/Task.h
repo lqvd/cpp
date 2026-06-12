@@ -51,7 +51,9 @@ class [[nodiscard]] Task {
                 std::coroutine_handle<> await_suspend(
                   std::coroutine_handle<promise_type> h) noexcept
                 {
-                    return h.promise().continuation;
+                    return std::exchange(
+                      h.promise().continuation,
+                      std::noop_coroutine());
                 }
 
                 void await_resume() noexcept {}
@@ -221,7 +223,7 @@ class [[nodiscard]] Task {
             }
         };
 
-        return awaitable{ handle };
+        return awaitable{ std::exchange(handle, nullptr) };
     }
 
     promise_type& promise() &
@@ -270,7 +272,9 @@ class [[nodiscard]] Task<void> {
                 std::coroutine_handle<> await_suspend(
                   std::coroutine_handle<promise_type> h) noexcept
                 {
-                    return h.promise().continuation;
+                    return std::exchange(
+                      h.promise().continuation,
+                      std::noop_coroutine());
                 }
 
                 void await_resume() noexcept {}
@@ -395,7 +399,7 @@ class [[nodiscard]] Task<void> {
                 this->coroutine.promise().result();
             }
         };
-        return awaitable{ handle };
+        return awaitable{ std::exchange(handle, nullptr) };
     }
 
     promise_type& promise() & { return handle.promise(); }
