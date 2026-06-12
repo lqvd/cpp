@@ -1,6 +1,7 @@
 // ChatGPT was used in creating this file.
 
 #include <faasm/faasm.h>
+#include <faasm/time.h>
 
 #include <faasrpc/Channel.h>
 #include <faasrpc/ClientContext.h>
@@ -14,7 +15,6 @@
 #include "postStorage/proto/post_storage.pb.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -43,9 +43,11 @@ struct Args
     bool verifyStorage = false;
 };
 
-static int64_t durationNs(std::chrono::steady_clock::duration d)
+static int64_t relNsSince(double benchStartSec)
 {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+    const double nowSec = faasm::getSecondsSinceEpoch();
+    const double relSec = nowSec - benchStartSec;
+    return static_cast<int64_t>(std::llround(relSec * 1e9));
 }
 
 static Args parseArgs(int argc, char* argv[])
@@ -354,7 +356,7 @@ faabric::rpc::Task<void> runBenchmark(const Args& args)
     int successes = 0;
     int failures = 0;
 
-    auto benchStart = std::chrono::steady_clock::now();
+    const double benchStartSec = faasm::getSecondsSinceEpoch();
 
     while (issued < args.totalRequests) {
         const int batchSize =
@@ -377,8 +379,7 @@ faabric::rpc::Task<void> runBenchmark(const Args& args)
             requestIdxs[i] = requestIdx;
             fillComposeRequest(reqs[i], args, requestIdx, reqId);
 
-            const auto t0 = std::chrono::steady_clock::now();
-            startTimes[i] = durationNs(t0 - benchStart);
+            startTimes[i] = relNsSince(benchStartSec);
 
             calls.push_back(composeStub->AsyncComposePost(&ctxs[i], reqs[i]));
         }
@@ -388,8 +389,7 @@ faabric::rpc::Task<void> runBenchmark(const Args& args)
         for (int i = 0; i < batchSize; i++) {
             auto result = co_await calls[i];
 
-            const auto t1 = std::chrono::steady_clock::now();
-            const int64_t endNs = durationNs(t1 - benchStart);
+            const int64_t endNs = relNsSince(benchStartSec);
 
             bool ok = result.ok();
             std::string status = "OK";
